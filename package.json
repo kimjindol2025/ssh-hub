@@ -1,0 +1,19 @@
+{
+  "name": "ssh-hub",
+  "version": "2.0.0",
+  "description": "중앙 SSH 관리 시스템",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.3",
+    "ssh2": "^1.17.0",
+    "uuid": "^8.3.2",
+    "web-push": "^3.6.7",
+    "ws": "^8.18.3"
+  }
+}

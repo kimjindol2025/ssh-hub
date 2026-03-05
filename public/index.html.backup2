@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSH Hub - 중앙 SSH 관리</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #fff;
+            padding: 20px;
+        }
+        .container { max-width: 1600px; margin: 0 auto; }
+        .header {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header h1 { font-size: 2em; margin-bottom: 5px; }
+        .header .subtitle { color: #888; }
+        .header-actions { display: flex; gap: 10px; align-items: center; }
+        .live-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 15px;
+            background: rgba(76,175,80,0.2);
+            border-radius: 20px;
+            font-size: 0.85em;
+        }
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background: #4CAF50;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; }
+        .card {
+            background: rgba(255,255,255,0.05);
+            border-radius: 15px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .card-icon { font-size: 1.5em; margin-right: 10px; }
+        .card-title { font-size: 1.2em; font-weight: 600; }
+        .card-actions { margin-left: auto; display: flex; gap: 8px; }
+        .proxy-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            margin: 8px 0;
+            background: rgba(0,0,0,0.2);
+            border-radius: 10px;
+        }
+        .proxy-status {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 12px;
+        }
+        .proxy-status.ok { background: #4CAF50; box-shadow: 0 0 10px #4CAF50; }
+        .proxy-status.partial { background: #ff9800; box-shadow: 0 0 10px #ff9800; }
+        .proxy-status.down { background: #f44336; box-shadow: 0 0 10px #f44336; }
+        .proxy-info { flex: 1; }
+        .proxy-name { font-weight: 600; }
+        .proxy-target { font-size: 0.85em; color: #888; }
+        .proxy-port {
+            font-size: 1.2em;
+            font-weight: 700;
+            color: #4facfe;
+            font-family: monospace;
+        }
+        .proxy-actions { margin-left: 10px; }
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: all 0.3s;
+        }
+        .btn-start { background: #4CAF50; color: #fff; }
+        .btn-stop { background: #f44336; color: #fff; }
+        .btn-primary { background: #4facfe; color: #fff; }
+        .btn-secondary { background: rgba(255,255,255,0.1); color: #fff; }
+        .btn-small { padding: 4px 8px; font-size: 0.75em; }
+        .btn:hover { transform: scale(1.05); }
+        .key-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            margin: 5px 0;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            font-size: 0.9em;
+        }
+        .key-type {
+            padding: 3px 8px;
+            background: #4facfe;
+            border-radius: 4px;
+            font-size: 0.8em;
+            margin-right: 10px;
+        }
+        .key-comment { flex: 1; color: #aaa; }
+        .key-warning {
+            padding: 3px 8px;
+            background: #ff9800;
+            border-radius: 4px;
+            font-size: 0.75em;
+            margin-left: 10px;
+        }
+        .log-item {
+            padding: 8px 12px;
+            margin: 4px 0;
+            background: rgba(0,0,0,0.2);
+            border-radius: 6px;
+            font-size: 0.85em;
+            font-family: monospace;
+            display: flex;
+            align-items: center;
+            transition: background 0.3s;
+        }
+        .log-item.new { background: rgba(76,175,80,0.3); }
+        .log-time { color: #888; margin-right: 15px; min-width: 80px; }
+        .log-server {
+            color: #fff;
+            background: #6366f1;
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-right: 10px;
+            font-size: 0.75em;
+            min-width: 70px;
+            text-align: center;
+        }
+        .log-server.external { background: #f44336; }
+        .log-user { color: #4facfe; margin-right: 10px; min-width: 80px; }
+        .log-ip { color: #43e97b; flex: 1; }
+        .log-failed { border-left: 3px solid #f44336; }
+        .log-success { border-left: 3px solid #4CAF50; }
+        .session-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 12px;
+            margin: 4px 0;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            font-size: 0.85em;
+        }
+        .session-server {
+            background: #6366f1;
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-right: 10px;
+            font-size: 0.75em;
+        }
+        .session-user { color: #4facfe; margin-right: 15px; min-width: 60px; }
+        .session-from { color: #43e97b; flex: 1; font-family: monospace; }
+        .session-time { color: #888; margin-right: 10px; }
+        .server-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            margin: 8px 0;
+            background: rgba(0,0,0,0.2);
+            border-radius: 10px;
+        }
+        .server-status {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 12px;
+        }
+        .server-status.online { background: #4CAF50; }
+        .server-status.offline { background: #f44336; }
+        .server-info { flex: 1; }
+        .server-name { font-weight: 600; }
+        .server-host { font-size: 0.85em; color: #888; font-family: monospace; }
+        .banned-ip {
+            display: inline-block;
+            padding: 5px 10px;
+            margin: 3px;
+            background: #f44336;
+            border-radius: 15px;
+            font-size: 0.85em;
+            font-family: monospace;
+        }
+        .banned-ip .unban {
+            margin-left: 8px;
+            cursor: pointer;
+            opacity: 0.7;
+        }
+        .banned-ip .unban:hover { opacity: 1; }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        .stat-box {
+            text-align: center;
+            padding: 15px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 10px;
+        }
+        .stat-value { font-size: 2em; font-weight: 700; color: #4facfe; }
+        .stat-value.green { color: #4CAF50; }
+        .stat-value.red { color: #f44336; }
+        .stat-label { font-size: 0.85em; color: #888; }
+        .wide { grid-column: span 2; }
+        .full { grid-column: 1 / -1; }
+        .refresh-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4facfe, #00f2fe);
+            border: none;
+            color: #fff;
+            font-size: 1.5em;
+            cursor: pointer;
+            box-shadow: 0 5px 20px rgba(79,172,254,0.4);
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: #1a1a2e;
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 600px;
+            width: 90%;
+        }
+        .modal-content h2 { margin-bottom: 20px; }
+        .modal-content textarea {
+            width: 100%;
+            height: 150px;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            color: #fff;
+            padding: 10px;
+            font-family: monospace;
+            margin-bottom: 15px;
+        }
+        .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+        .filter-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        .filter-bar input, .filter-bar select {
+            padding: 8px 12px;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 5px;
+            color: #fff;
+            font-size: 0.85em;
+        }
+        .chart-container {
+            position: relative;
+            height: 200px;
+        }
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            background: #f44336;
+            color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+            animation: slideIn 0.3s;
+            z-index: 2000;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @media (max-width: 768px) {
+            .grid { grid-template-columns: 1fr; }
+            .wide, .full { grid-column: span 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>SSH Hub</h1>
+                <div class="subtitle">중앙 SSH 관리 시스템 | ssh.dclub.kr</div>
+            </div>
+            <div class="header-actions">
+                <div class="live-indicator" id="ws-status">
+                    <div class="live-dot"></div>
+                    <span>실시간</span>
+                </div>
+                <button class="btn btn-primary" onclick="requestNotificationPermission()">알림 허용</button>
+            </div>
+        </div>
+
+        <div class="grid">
+            <!-- 접속 통계 -->
+            <div class="card wide">
+                <div class="card-header">
+                    <span class="card-icon">📊</span>
+                    <span class="card-title">접속 통계</span>
+                </div>
+                <div class="stats">
+                    <div class="stat-box">
+                        <div class="stat-value green" id="stat-internal">-</div>
+                        <div class="stat-label">내부 접속</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value red" id="stat-external">-</div>
+                        <div class="stat-label">외부 접속</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="stat-total">-</div>
+                        <div class="stat-label">총 접속</div>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="stats-chart"></canvas>
+                </div>
+            </div>
+
+            <!-- 활성 세션 -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">👥</span>
+                    <span class="card-title">활성 세션</span>
+                    <span class="card-actions">
+                        <span id="session-count" style="color:#888;font-size:0.9em">0개</span>
+                    </span>
+                </div>
+                <div id="session-list" style="max-height: 250px; overflow-y: auto;"></div>
+            </div>
+
+            <!-- SSH 프록시 상태 -->
+            <div class="card wide">
+                <div class="card-header">
+                    <span class="card-icon">🔗</span>
+                    <span class="card-title">SSH 프록시 (외부 접속)</span>
+                </div>
+                <div class="stats">
+                    <div class="stat-box">
+                        <div class="stat-value green" id="proxy-ok">-</div>
+                        <div class="stat-label">정상</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" style="color:#ff9800" id="proxy-partial">-</div>
+                        <div class="stat-label">부분</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value red" id="proxy-down">-</div>
+                        <div class="stat-label">중단</div>
+                    </div>
+                </div>
+                <div id="proxy-list"></div>
+            </div>
+
+            <!-- SSH 키 관리 -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">🔑</span>
+                    <span class="card-title">SSH 키 관리</span>
+                    <button class="btn btn-start btn-small" style="margin-left:auto" onclick="showAddKeyModal()">+ 키 추가</button>
+                </div>
+                <div id="key-list"></div>
+            </div>
+
+            <!-- 서버 상태 -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">🖥️</span>
+                    <span class="card-title">서버 상태</span>
+                </div>
+                <div id="server-list"></div>
+            </div>
+
+            <!-- 접속 로그 -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">📋</span>
+                    <span class="card-title">최근 SSH 접속</span>
+                    <div class="card-actions">
+                        <button class="btn btn-secondary btn-small" onclick="exportCSV()">CSV</button>
+                    </div>
+                </div>
+                <div class="filter-bar">
+                    <input type="text" id="filter-user" placeholder="사용자" style="width:100px">
+                    <select id="filter-server">
+                        <option value="">모든 서버</option>
+                        <option value="73">Server-73</option>
+                        <option value="232">Server-232</option>
+                        <option value="253">Server-253</option>
+                        <option value="외부">외부만</option>
+                    </select>
+                    <button class="btn btn-primary btn-small" onclick="searchLogs()">검색</button>
+                </div>
+                <div id="log-list" style="max-height: 300px; overflow-y: auto;"></div>
+            </div>
+
+            <!-- 실패 로그 -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">⚠️</span>
+                    <span class="card-title">실패 시도</span>
+                </div>
+                <div id="failed-list" style="max-height: 300px; overflow-y: auto;"></div>
+            </div>
+
+            <!-- Fail2ban -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">🚫</span>
+                    <span class="card-title">Fail2ban 차단</span>
+                </div>
+                <div class="stats" style="grid-template-columns: repeat(2, 1fr);">
+                    <div class="stat-box">
+                        <div class="stat-value red" id="banned-current">-</div>
+                        <div class="stat-label">현재 차단</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="banned-total">-</div>
+                        <div class="stat-label">총 차단</div>
+                    </div>
+                </div>
+                <div id="banned-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <button class="refresh-btn" onclick="loadAll()">🔄</button>
+
+    <!-- 키 추가 모달 -->
+    <div class="modal" id="add-key-modal">
+        <div class="modal-content">
+            <h2>SSH 키 추가</h2>
+            <textarea id="new-key" placeholder="ssh-ed25519 AAAA... comment"></textarea>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="hideModal()">취소</button>
+                <button class="btn btn-primary" onclick="addKey()">추가</button>
+            </div>
+            <hr style="margin: 20px 0; border-color: rgba(255,255,255,0.1);">
+            <h3 style="margin-bottom: 10px;">새 키 생성</h3>
+            <button class="btn btn-primary" onclick="generateKey()">Ed25519 키 생성</button>
+            <div id="generated-key" style="margin-top: 15px;"></div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let statsChart = null;
+
+        // WebSocket 연결
+        function connectWebSocket() {
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${location.host}`);
+
+            ws.onopen = () => {
+                document.getElementById('ws-status').style.background = 'rgba(76,175,80,0.2)';
+            };
+
+            ws.onclose = () => {
+                document.getElementById('ws-status').style.background = 'rgba(244,67,54,0.2)';
+                setTimeout(connectWebSocket, 3000);
+            };
+
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                handleRealtimeEvent(msg);
+            };
+        }
+
+        // 실시간 이벤트 처리
+        function handleRealtimeEvent(msg) {
+            if (msg.type === 'new_login') {
+                addLogEntry(msg.data, 'log-list', true);
+                loadStats();
+                loadSessions();
+            } else if (msg.type === 'failed_attempt') {
+                addLogEntry(msg.data, 'failed-list', true);
+            } else if (msg.type === 'external_access') {
+                showExternalAlert(msg.data);
+            }
+        }
+
+        // 로그 항목 추가
+        function addLogEntry(log, containerId, isNew = false) {
+            const container = document.getElementById(containerId);
+            const isExternal = log.server && log.server.startsWith('외부');
+            const html = `
+                <div class="log-item ${containerId === 'failed-list' ? 'log-failed' : 'log-success'} ${isNew ? 'new' : ''}">
+                    <span class="log-time">${log.time}</span>
+                    <span class="log-server ${isExternal ? 'external' : ''}">${log.server || 'Unknown'}</span>
+                    <span class="log-user">${log.user}</span>
+                    <span class="log-ip">${log.ip}</span>
+                </div>
+            `;
+            container.insertAdjacentHTML('afterbegin', html);
+
+            // 하이라이트 제거
+            if (isNew) {
+                setTimeout(() => {
+                    const newItem = container.querySelector('.new');
+                    if (newItem) newItem.classList.remove('new');
+                }, 2000);
+            }
+
+            // 최대 20개 유지
+            while (container.children.length > 20) {
+                container.removeChild(container.lastChild);
+            }
+        }
+
+        // 외부 접속 알림
+        function showExternalAlert(data) {
+            // 토스트 알림
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.innerHTML = `⚠️ 외부 접속: ${data.user}@${data.ip} → ${data.server}`;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 5000);
+
+            // 브라우저 알림
+            if (Notification.permission === 'granted') {
+                new Notification('SSH 외부 접속 감지', {
+                    body: `${data.user}@${data.ip} → ${data.server}`,
+                    icon: '🔐'
+                });
+            }
+        }
+
+        // 알림 권한 요청
+        function requestNotificationPermission() {
+            Notification.requestPermission().then(perm => {
+                alert(perm === 'granted' ? '알림이 활성화되었습니다.' : '알림이 거부되었습니다.');
+            });
+        }
+
+        // CSV 내보내기
+        function exportCSV() {
+            window.location.href = '/api/logs/export';
+        }
+
+        // 로그 검색
+        async function searchLogs() {
+            const user = document.getElementById('filter-user').value;
+            const server = document.getElementById('filter-server').value;
+            const params = new URLSearchParams();
+            if (user) params.set('user', user);
+            if (server) params.set('server', server);
+
+            const res = await fetch(`/api/logs/search?${params}`);
+            const data = await res.json();
+
+            let html = '';
+            data.logs.forEach(l => {
+                const isExternal = l.server && l.server.startsWith('외부');
+                html += `
+                    <div class="log-item ${l.logType === 'failed' ? 'log-failed' : 'log-success'}">
+                        <span class="log-time">${l.time}</span>
+                        <span class="log-server ${isExternal ? 'external' : ''}">${l.server || 'Unknown'}</span>
+                        <span class="log-user">${l.user}</span>
+                        <span class="log-ip">${l.ip}</span>
+                    </div>
+                `;
+            });
+            document.getElementById('log-list').innerHTML = html || '<div style="color:#888">로그 없음</div>';
+        }
+
+        // 통계 로드
+        async function loadStats() {
+            try {
+                const res = await fetch('/api/stats');
+                const data = await res.json();
+
+                document.getElementById('stat-internal').textContent = data.internal || 0;
+                document.getElementById('stat-external').textContent = data.external || 0;
+                document.getElementById('stat-total').textContent = (data.internal || 0) + (data.external || 0);
+
+                // 차트 업데이트 (2시간 단위, 최근 24시간)
+                const hourlyData = data.hourly || {};
+                const now = new Date();
+                const labels = [];
+                const values = [];
+
+                // 최근 24시간 (12개 슬롯) 생성
+                for (let i = 11; i >= 0; i--) {
+                    const slotTime = new Date(now.getTime() - i * 2 * 60 * 60 * 1000);
+                    const month = slotTime.getMonth() + 1;
+                    const day = slotTime.getDate();
+                    const hour = Math.floor(slotTime.getHours() / 2) * 2;
+                    const slotKey = `${month}/${day} ${String(hour).padStart(2,'0')}:00`;
+                    labels.push(`${String(hour).padStart(2,'0')}:00`);
+                    values.push(hourlyData[slotKey] || 0);
+                }
+
+                if (statsChart) {
+                    statsChart.data.labels = labels;
+                    statsChart.data.datasets[0].data = values;
+                    statsChart.update();
+                } else {
+                    const ctx = document.getElementById('stats-chart').getContext('2d');
+                    statsChart = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: '2시간 단위 접속',
+                                data: values,
+                                backgroundColor: 'rgba(79,172,254,0.5)',
+                                borderColor: '#4facfe',
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { display: false } },
+                            scales: {
+                                y: { beginAtZero: true, ticks: { color: '#888' } },
+                                x: { ticks: { color: '#888' } }
+                            }
+                        }
+                    });
+                }
+            } catch (e) { console.error('Stats error:', e); }
+        }
+
+        // 활성 세션 로드
+        async function loadSessions() {
+            try {
+                const res = await fetch('/api/sessions');
+                const data = await res.json();
+
+                document.getElementById('session-count').textContent = `${data.total}개`;
+
+                let html = '';
+                data.sessions.forEach(s => {
+                    html += `
+                        <div class="session-item">
+                            <span class="session-server">${s.server}</span>
+                            <span class="session-user">${s.user}</span>
+                            <span class="session-from">${s.from}</span>
+                            <span class="session-time">${s.loginTime}</span>
+                            <button class="btn btn-stop btn-small" onclick="killSession('${s.server}','${s.pid}')">종료</button>
+                        </div>
+                    `;
+                });
+
+                document.getElementById('session-list').innerHTML = html || '<div style="color:#888">활성 세션 없음</div>';
+            } catch (e) { console.error('Sessions error:', e); }
+        }
+
+        // 세션 종료
+        async function killSession(server, pid) {
+            if (!confirm('이 세션을 종료하시겠습니까?')) return;
+            await fetch('/api/sessions/kill', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ server, pid })
+            });
+            loadSessions();
+        }
+
+        async function loadAll() {
+            loadProxies();
+            loadKeys();
+            loadServers();
+            loadLogs();
+            loadFailedLogs();
+            loadFail2ban();
+            loadStats();
+            loadSessions();
+        }
+
+        async function loadProxies() {
+            const res = await fetch('/api/proxy/status');
+            const data = await res.json();
+
+            let okCount = 0, partialCount = 0, downCount = 0;
+            let html = '';
+
+            data.proxies.forEach(p => {
+                if (p.status === 'ok') okCount++;
+                else if (p.status === 'partial') partialCount++;
+                else downCount++;
+
+                html += `
+                    <div class="proxy-item">
+                        <div class="proxy-status ${p.status}"></div>
+                        <div class="proxy-info">
+                            <div class="proxy-name">${p.name}</div>
+                            <div class="proxy-target">→ ${p.target}</div>
+                        </div>
+                        <div class="proxy-port">${p.port}</div>
+                        <div class="proxy-actions">
+                            ${p.running ?
+                                `<button class="btn btn-stop btn-small" onclick="stopProxy('${p.name}')">중지</button>` :
+                                `<button class="btn btn-start btn-small" onclick="startProxy('${p.name}')">시작</button>`
+                            }
+                        </div>
+                    </div>
+                `;
+            });
+
+            document.getElementById('proxy-ok').textContent = okCount;
+            document.getElementById('proxy-partial').textContent = partialCount;
+            document.getElementById('proxy-down').textContent = downCount;
+            document.getElementById('proxy-list').innerHTML = html;
+        }
+
+        async function startProxy(name) {
+            await fetch(`/api/proxy/${name}/start`, { method: 'POST' });
+            loadProxies();
+        }
+
+        async function stopProxy(name) {
+            await fetch(`/api/proxy/${name}/stop`, { method: 'POST' });
+            loadProxies();
+        }
+
+        async function loadKeys() {
+            const res = await fetch('/api/keys');
+            const data = await res.json();
+
+            let html = '';
+            data.keys.forEach(k => {
+                html += `
+                    <div class="key-item">
+                        <span class="key-type">${k.type}</span>
+                        <span class="key-comment">${k.comment}</span>
+                        ${k.needsRotation ? '<span class="key-warning">로테이션 필요</span>' : ''}
+                        <button class="btn btn-stop btn-small" style="margin-left:10px" onclick="deleteKey(${k.id})">삭제</button>
+                    </div>
+                `;
+            });
+
+            document.getElementById('key-list').innerHTML = html || '<div style="color:#888">등록된 키 없음</div>';
+        }
+
+        async function deleteKey(id) {
+            if (confirm('이 키를 삭제하시겠습니까?')) {
+                await fetch(`/api/keys/${id}`, { method: 'DELETE' });
+                loadKeys();
+            }
+        }
+
+        function showAddKeyModal() {
+            document.getElementById('add-key-modal').style.display = 'flex';
+        }
+
+        function hideModal() {
+            document.getElementById('add-key-modal').style.display = 'none';
+            document.getElementById('generated-key').innerHTML = '';
+        }
+
+        async function addKey() {
+            const key = document.getElementById('new-key').value;
+            if (!key) return alert('키를 입력하세요');
+
+            await fetch('/api/keys', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key })
+            });
+            hideModal();
+            loadKeys();
+        }
+
+        async function generateKey() {
+            const res = await fetch('/api/keys/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ comment: `generated-${new Date().getFullYear()}` })
+            });
+            const data = await res.json();
+
+            document.getElementById('generated-key').innerHTML = `
+                <div style="background:rgba(0,0,0,0.3);padding:15px;border-radius:8px;">
+                    <div style="margin-bottom:10px;color:#4CAF50;">공개키 (서버에 등록):</div>
+                    <textarea style="width:100%;height:60px;background:#000;color:#4facfe;border:none;padding:8px;font-family:monospace;">${data.publicKey}</textarea>
+                    <div style="margin:10px 0;color:#ff9800;">비공개키 (안전하게 보관):</div>
+                    <textarea style="width:100%;height:100px;background:#000;color:#ff9800;border:none;padding:8px;font-family:monospace;">${data.privateKey}</textarea>
+                </div>
+            `;
+        }
+
+        async function loadServers() {
+            const res = await fetch('/api/servers');
+            const data = await res.json();
+
+            let html = '';
+            data.servers.forEach(s => {
+                html += `
+                    <div class="server-item">
+                        <div class="server-status ${s.sshOk ? 'online' : 'offline'}"></div>
+                        <div class="server-info">
+                            <div class="server-name">${s.name}</div>
+                            <div class="server-host">${s.user}@${s.host}</div>
+                        </div>
+                        <div>${s.sshOk ? '온라인' : '오프라인'}</div>
+                    </div>
+                `;
+            });
+
+            document.getElementById('server-list').innerHTML = html;
+        }
+
+        async function loadLogs() {
+            const res = await fetch('/api/logs');
+            const data = await res.json();
+
+            let html = '';
+            data.logs.slice(0, 20).forEach(l => {
+                const isExternal = l.server && l.server.startsWith('외부');
+                html += `
+                    <div class="log-item log-success">
+                        <span class="log-time">${l.time}</span>
+                        <span class="log-server ${isExternal ? 'external' : ''}">${l.server || 'Unknown'}</span>
+                        <span class="log-user">${l.user}</span>
+                        <span class="log-ip">${l.ip}</span>
+                    </div>
+                `;
+            });
+
+            document.getElementById('log-list').innerHTML = html || '<div style="color:#888">로그 없음</div>';
+        }
+
+        async function loadFailedLogs() {
+            const res = await fetch('/api/logs/failed');
+            const data = await res.json();
+
+            let html = '';
+            data.logs.slice(0, 20).forEach(l => {
+                const isExternal = l.server && l.server.startsWith('외부');
+                html += `
+                    <div class="log-item log-failed">
+                        <span class="log-time">${l.time}</span>
+                        <span class="log-server ${isExternal ? 'external' : ''}">${l.server || 'Unknown'}</span>
+                        <span class="log-user">${l.user}</span>
+                        <span class="log-ip">${l.ip}</span>
+                    </div>
+                `;
+            });
+
+            document.getElementById('failed-list').innerHTML = html || '<div style="color:#888">실패 로그 없음</div>';
+        }
+
+        async function loadFail2ban() {
+            const res = await fetch('/api/fail2ban');
+            const data = await res.json();
+
+            document.getElementById('banned-current').textContent = data.currentlyBanned;
+            document.getElementById('banned-total').textContent = data.totalBanned;
+
+            let html = '';
+            data.bannedIPs.forEach(ip => {
+                html += `<span class="banned-ip">${ip}<span class="unban" onclick="unban('${ip}')">✕</span></span>`;
+            });
+
+            document.getElementById('banned-list').innerHTML = html || '<div style="color:#888">차단된 IP 없음</div>';
+        }
+
+        async function unban(ip) {
+            if (confirm(`${ip} 차단을 해제하시겠습니까?`)) {
+                await fetch(`/api/fail2ban/unban/${ip}`, { method: 'POST' });
+                loadFail2ban();
+            }
+        }
+
+        // 초기 로드
+        connectWebSocket();
+        loadAll();
+        setInterval(loadAll, 30000);
+    </script>
+</body>
+</html>

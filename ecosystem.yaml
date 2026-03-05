@@ -1,0 +1,6 @@
+apps:
+  - name: ssh-hub
+    script: /usr/bin/node
+    args:
+      - server.js
+    cwd: /home/kimjin/ssh-hub

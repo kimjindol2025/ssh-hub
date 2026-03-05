@@ -1,0 +1,2220 @@
+<!DOCTYPE html>
+<!--
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                     SSH 접속 가이드 (for Claude Code)                         ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║                                                                              ║
+║  ┌─────────────────────────────────────────────────────────────────────────┐ ║
+║  │ 1. 직접 SSH 접속 (터미널)                                                │ ║
+║  │                                                                         │ ║
+║  │ # 73 서버 (메인/게이트웨이)                                              │ ║
+║  │ ssh kim@192.168.45.73 -p 2222                                           │ ║
+║  │                                                                         │ ║
+║  │ # 253 서버 (서비스)                                                      │ ║
+║  │ ssh kimjin@192.168.45.253                                               │ ║
+║  │                                                                         │ ║
+║  │ # 232 서버 (DB/AI)                                                       │ ║
+║  │ ssh kim@192.168.45.232 -p 2222                                          │ ║
+║  └─────────────────────────────────────────────────────────────────────────┘ ║
+║                                                                              ║
+║  ┌─────────────────────────────────────────────────────────────────────────┐ ║
+║  │ 2. NexusSSH API로 원격 명령 실행 (권장)                                   │ ║
+║  │                                                                         │ ║
+║  │ # 단일 명령 실행                                                         │ ║
+║  │ curl -X POST https://nexus.dclub.kr/api/exec \                          │ ║
+║  │   -H "X-API-Key: dclub-api-key-2025-secure" \                           │ ║
+║  │   -H "Content-Type: application/json" \                                 │ ║
+║  │   -d '{"server":"253","command":"pm2 list"}'                            │ ║
+║  │                                                                         │ ║
+║  │ # 시스템 상태 확인                                                       │ ║
+║  │ curl "https://nexus.dclub.kr/api/status/253" \                          │ ║
+║  │   -H "X-API-Key: dclub-api-key-2025-secure"                             │ ║
+║  │                                                                         │ ║
+║  │ # PM2 재시작                                                             │ ║
+║  │ curl -X POST "https://nexus.dclub.kr/api/pm2/253/restart/앱이름" \       │ ║
+║  │   -H "X-API-Key: dclub-api-key-2025-secure"                             │ ║
+║  └─────────────────────────────────────────────────────────────────────────┘ ║
+║                                                                              ║
+║  ┌─────────────────────────────────────────────────────────────────────────┐ ║
+║  │ 3. SSH Hub API (간편 상태 확인)                                          │ ║
+║  │                                                                         │ ║
+║  │ # 전체 서버 상태 (한 줄)                                                  │ ║
+║  │ curl -s https://ssh.dclub.kr/api/ai/status \                            │ ║
+║  │   -H "X-API-Key: dclub-api-key-2025-secure"                             │ ║
+║  │ → "73:OK(up:1d,disk:2%) 232:OK 253:OK"                                  │ ║
+║  │                                                                         │ ║
+║  │ # 빠른 명령어 (pm2, disk, mem, cpu)                                      │ ║
+║  │ curl -s https://ssh.dclub.kr/api/ai/quick/pm2 \                         │ ║
+║  │   -H "X-API-Key: dclub-api-key-2025-secure"                             │ ║
+║  │                                                                         │ ║
+║  │ # 원격 명령 실행                                                         │ ║
+║  │ curl -s "https://ssh.dclub.kr/api/ai/exec?server=253&cmd=uptime" \      │ ║
+║  │   -H "X-API-Key: dclub-api-key-2025-secure"                             │ ║
+║  └─────────────────────────────────────────────────────────────────────────┘ ║
+║                                                                              ║
+║  ┌─────────────────────────────────────────────────────────────────────────┐ ║
+║  │ 4. 서버 정보                                                             │ ║
+║  │                                                                         │ ║
+║  │ 서버  │ IP              │ 포트  │ 유저   │ 용도                          │ ║
+║  │ ──────┼─────────────────┼───────┼────────┼─────────────────────────────  │ ║
+║  │ 73    │ 192.168.45.73   │ 2222  │ kim    │ 메인/게이트웨이/DNS           │ ║
+║  │ 253   │ 192.168.45.253  │ 22    │ kimjin │ 서비스/KimDB/PM2              │ ║
+║  │ 232   │ 192.168.45.232  │ 2222  │ kim    │ DB/Million AI                 │ ║
+║  │                                                                         │ ║
+║  │ 공인IP: 123.212.111.26 (외부 → 73 → 내부)                                │ ║
+║  └─────────────────────────────────────────────────────────────────────────┘ ║
+║                                                                              ║
+║  ┌─────────────────────────────────────────────────────────────────────────┐ ║
+║  │ 5. 253 직접 접속 (73 다운 시 백업) ⭐ [2026-02-19 업데이트]              │ ║
+║  │                                                                         │ ║
+║  │ # SSH 직접 접속 (권장 순서)                                              │ ║
+║  │                                                                         │ ║
+║  │ 방법 1️⃣ 표준 SSH (포트 22) - 권장                                        │ ║
+║  │ ssh kimjin@123.212.111.26                                               │ ║
+║  │                                                                         │ ║
+║  │ 방법 2️⃣ 프록시 포트 (포트 10053)                                        │ ║
+║  │ ssh -p 10053 kimjin@123.212.111.26                                      │ ║
+║  │                                                                         │ ║
+║  │ 방법 3️⃣ 직접 포트 (포트 22253) - 일부 네트워크에서 타임아웃 가능         │ ║
+║  │ ssh -p 22253 kimjin@123.212.111.26                                      │ ║
+║  │                                                                         │ ║
+║  │ # KimDB 직접                                                             │ ║
+║  │ curl http://123.212.111.26:40253/health                                 │ ║
+║  │                                                                         │ ║
+║  │ # SSH Hub 직접                                                           │ ║
+║  │ http://123.212.111.26:50253                                             │ ║
+║  └─────────────────────────────────────────────────────────────────────────┘ ║
+║                                                                              ║
+║  ┌─────────────────────────────────────────────────────────────────────────┐ ║
+║  │ 6. 253 서버 접근 우선순위 (2026-02-19 업데이트)                            │ ║
+║  │                                                                         │ ║
+║  │ 1순위: API  → curl https://nexus.dclub.kr/api/...                       │ ║
+║  │ 2순위: 마운트 → /mnt/253/ (73에서 접근)                                   │ ║
+║  │ 3순위: SSH 내부 → ssh kimjin@192.168.45.253 (내부 네트워크)               │ ║
+║  │ 4순위: SSH 외부 → ssh -p 22 kimjin@123.212.111.26 (추천)                │ ║
+║  │ 5순위: SSH 프록시 → ssh -p 10053 kimjin@123.212.111.26                  │ ║
+║  │ 백업:  SSH 직접 → ssh -p 22253 kimjin@123.212.111.26 (타임아웃 가능)     │ ║
+║  └─────────────────────────────────────────────────────────────────────────┘ ║
+║                                                                              ║
+║  API Key: dclub-api-key-2025-secure                                         ║
+║  대시보드: https://million.dclub.kr                                          ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+-->
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSH Hub - 중앙 SSH 관리</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ubuntu+Mono:wght@400;700&display=swap">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            color: #fff;
+            padding: 15px;
+        }
+        .container { max-width: 1600px; margin: 0 auto; }
+        .header {
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .header h1 { font-size: 1.8em; margin-bottom: 5px; }
+        .header .subtitle { color: #888; font-size: 0.9em; }
+        .header-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .live-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: rgba(76,175,80,0.2);
+            border-radius: 20px;
+            font-size: 0.8em;
+        }
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background: #4CAF50;
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .grid { display: grid; grid-template-columns: 1fr; gap: 15px; }
+        .card {
+            background: rgba(255,255,255,0.05);
+            border-radius: 12px;
+            padding: 15px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .card-icon { font-size: 1.3em; margin-right: 8px; }
+        .card-title { font-size: 1.1em; font-weight: 600; }
+        .card-actions { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+        .proxy-item {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            padding: 10px;
+            margin: 6px 0;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            gap: 8px;
+        }
+        .proxy-status {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .proxy-status.ok { background: #4CAF50; box-shadow: 0 0 10px #4CAF50; }
+        .proxy-status.partial { background: #ff9800; box-shadow: 0 0 10px #ff9800; }
+        .proxy-status.down { background: #f44336; box-shadow: 0 0 10px #f44336; }
+        .proxy-info { flex: 1; min-width: 150px; }
+        .proxy-name { font-weight: 600; font-size: 0.95em; }
+        .proxy-target { font-size: 0.8em; color: #888; }
+        .proxy-port {
+            font-size: 1.1em;
+            font-weight: 700;
+            color: #4facfe;
+            font-family: monospace;
+        }
+        .proxy-actions { display: flex; gap: 6px; }
+        .btn {
+            padding: 6px 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.8em;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+        .btn-start { background: #4CAF50; color: #fff; }
+        .btn-stop { background: #f44336; color: #fff; }
+        .btn-primary { background: #4facfe; color: #fff; }
+        .btn-secondary { background: rgba(255,255,255,0.1); color: #fff; }
+        .btn-small { padding: 4px 8px; font-size: 0.75em; }
+        .btn:hover { transform: scale(1.05); }
+        .key-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            margin: 5px 0;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            font-size: 0.9em;
+        }
+        .key-type {
+            padding: 3px 8px;
+            background: #4facfe;
+            border-radius: 4px;
+            font-size: 0.8em;
+            margin-right: 10px;
+        }
+        .key-comment { flex: 1; color: #aaa; }
+        .key-warning {
+            padding: 3px 8px;
+            background: #ff9800;
+            border-radius: 4px;
+            font-size: 0.75em;
+            margin-left: 10px;
+        }
+        .log-item {
+            padding: 8px 10px;
+            margin: 4px 0;
+            background: rgba(0,0,0,0.2);
+            border-radius: 6px;
+            font-size: 0.8em;
+            font-family: monospace;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+            transition: background 0.3s;
+        }
+        .log-item.new { background: rgba(76,175,80,0.3); }
+        .log-time { color: #888; min-width: 70px; }
+        .log-server {
+            color: #fff;
+            background: #6366f1;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.7em;
+            min-width: 50px;
+            text-align: center;
+        }
+        .log-server.external { background: #f44336; }
+        .log-user { color: #4facfe; min-width: 60px; }
+        .log-ip { color: #43e97b; flex: 1; min-width: 100px; }
+        .log-failed { border-left: 3px solid #f44336; }
+        .log-success { border-left: 3px solid #4CAF50; }
+        .session-item {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            padding: 10px;
+            margin: 4px 0;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            font-size: 0.8em;
+            gap: 8px;
+        }
+        .session-server {
+            background: #6366f1;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.7em;
+            white-space: nowrap;
+        }
+        .session-user { color: #4facfe; min-width: 50px; }
+        .session-from { color: #43e97b; flex: 1; font-family: monospace; min-width: 100px; }
+        .session-time { color: #888; white-space: nowrap; }
+        .server-item {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            padding: 10px;
+            margin: 6px 0;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            gap: 8px;
+        }
+        .server-status {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 12px;
+        }
+        .server-status.online { background: #4CAF50; }
+        .server-status.offline { background: #f44336; }
+        .server-info { flex: 1; }
+        .server-name { font-weight: 600; display: flex; align-items: center; gap: 8px; }
+        .server-host { font-size: 0.85em; color: #888; font-family: monospace; }
+
+        /* NexusSSH 클러스터 상태 스타일 */
+        .server-item.best-server {
+            background: linear-gradient(135deg, rgba(79, 172, 254, 0.15), rgba(0, 242, 254, 0.1));
+            border: 1px solid rgba(79, 172, 254, 0.3);
+        }
+        .best-badge {
+            font-size: 0.7em;
+            background: linear-gradient(135deg, #f093fb, #f5576c);
+            padding: 2px 8px;
+            border-radius: 10px;
+            color: white;
+        }
+        .server-metrics {
+            display: flex;
+            gap: 8px;
+            margin-right: 15px;
+        }
+        .metric {
+            font-size: 0.75em;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-family: monospace;
+        }
+        .metric.cpu {
+            background: rgba(76, 175, 80, 0.2);
+            color: #4CAF50;
+        }
+        .metric.mem {
+            background: rgba(255, 152, 0, 0.2);
+            color: #ff9800;
+        }
+        .metric.via {
+            background: rgba(156, 39, 176, 0.2);
+            color: #ba68c8;
+        }
+        .metric.via.nexus {
+            background: linear-gradient(135deg, rgba(0, 242, 254, 0.2), rgba(79, 172, 254, 0.2));
+            color: #00f2fe;
+            font-weight: 600;
+        }
+        .server-status-text {
+            font-size: 0.85em;
+            min-width: 50px;
+            text-align: right;
+        }
+
+        /* 스토리지 대시보드 스타일 */
+        .storage-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+        }
+        .storage-section {
+            background: rgba(0,0,0,0.2);
+            border-radius: 10px;
+            padding: 15px;
+        }
+        .storage-section h4 {
+            font-size: 0.9em;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #fff;
+        }
+        .disk-bar-container {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+            gap: 10px;
+        }
+        .disk-label {
+            font-size: 0.8em;
+            color: #888;
+            min-width: 35px;
+        }
+        .disk-bar {
+            flex: 1;
+            height: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .disk-bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+        .disk-bar-fill.ok { background: linear-gradient(90deg, #4CAF50, #81C784); }
+        .disk-bar-fill.warn { background: linear-gradient(90deg, #ff9800, #ffb74d); }
+        .disk-bar-fill.danger { background: linear-gradient(90deg, #f44336, #e57373); }
+        .disk-percent {
+            font-size: 0.75em;
+            font-family: monospace;
+            min-width: 35px;
+            text-align: right;
+        }
+        .file-list, .log-list-mini {
+            max-height: 150px;
+            overflow-y: auto;
+            font-size: 0.8em;
+        }
+        .file-item, .log-item-mini {
+            padding: 4px 8px;
+            margin: 2px 0;
+            background: rgba(0,0,0,0.2);
+            border-radius: 4px;
+            font-family: monospace;
+            display: flex;
+            justify-content: space-between;
+        }
+        .file-server { color: #4facfe; margin-right: 8px; }
+        .file-path { color: #ccc; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .log-item-mini.error { border-left: 2px solid #f44336; }
+        .log-item-mini.auth { border-left: 2px solid #ff9800; }
+        .storage-summary {
+            display: flex;
+            justify-content: space-around;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            margin-top: 10px;
+        }
+        .summary-item {
+            text-align: center;
+        }
+        .summary-value {
+            font-size: 1.2em;
+            font-weight: 700;
+            color: #4facfe;
+        }
+        .summary-label {
+            font-size: 0.7em;
+            color: #888;
+        }
+
+        .banned-ip {
+            display: inline-block;
+            padding: 5px 10px;
+            margin: 3px;
+            background: #f44336;
+            border-radius: 15px;
+            font-size: 0.85em;
+            font-family: monospace;
+        }
+        .banned-ip .unban {
+            margin-left: 8px;
+            cursor: pointer;
+            opacity: 0.7;
+        }
+        .banned-ip .unban:hover { opacity: 1; }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+        .stat-box {
+            text-align: center;
+            padding: 15px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 10px;
+        }
+        .stat-value { font-size: 2em; font-weight: 700; color: #4facfe; }
+        .stat-value.green { color: #4CAF50; }
+        .stat-value.red { color: #f44336; }
+        .stat-label { font-size: 0.85em; color: #888; }
+        .wide { grid-column: span 2; }
+        .full { grid-column: 1 / -1; }
+        .refresh-btn {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4facfe, #00f2fe);
+            border: none;
+            color: #fff;
+            font-size: 1.5em;
+            cursor: pointer;
+            box-shadow: 0 5px 20px rgba(79,172,254,0.4);
+        }
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background: #1a1a2e;
+            padding: 30px;
+            border-radius: 15px;
+            max-width: 600px;
+            width: 90%;
+        }
+        .modal-content h2 { margin-bottom: 20px; }
+        .modal-content textarea {
+            width: 100%;
+            height: 150px;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
+            color: #fff;
+            padding: 10px;
+            font-family: monospace;
+            margin-bottom: 15px;
+        }
+        .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+        .filter-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        .filter-bar input, .filter-bar select {
+            padding: 8px 12px;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 5px;
+            color: #fff;
+            font-size: 0.85em;
+        }
+        .chart-container {
+            position: relative;
+            height: 200px;
+        }
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 25px;
+            background: #f44336;
+            color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.3);
+            animation: slideIn 0.3s;
+            z-index: 2000;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @media (max-width: 768px) {
+            .grid { grid-template-columns: 1fr; }
+            .wide, .full { grid-column: span 1; }
+        }
+        .ssh-cmd {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .ssh-cmd:hover { background: rgba(79,172,254,0.2); }
+        .ssh-cmd.copied { background: rgba(76,175,80,0.3); }
+        .ssh-cmd span { font-weight: 600; min-width: 140px; font-size: 0.9em; }
+        .ssh-cmd code { flex: 1; color: #4CAF50; font-size: 0.85em; }
+        .ssh-cmd button {
+            background: rgba(255,255,255,0.1);
+            border: none;
+            padding: 5px 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+        }
+        .ssh-cmd button:hover { background: rgba(255,255,255,0.2); }
+
+        /* Hub 서버 카드 */
+        .hub-section {
+            margin-bottom: 25px;
+        }
+        .hub-title {
+            font-size: 1.5em;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .hub-title span { color: #4facfe; }
+        .hub-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .server-card {
+            background: linear-gradient(145deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+            border-radius: 20px;
+            padding: 25px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+            position: relative;
+            overflow: hidden;
+        }
+        .server-card:hover {
+            transform: translateY(-5px);
+            border-color: #4facfe;
+            box-shadow: 0 10px 40px rgba(79,172,254,0.3);
+        }
+        .server-card.online::before {
+            content: '';
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            width: 12px;
+            height: 12px;
+            background: #4CAF50;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #4CAF50;
+        }
+        .server-card.offline::before {
+            content: '';
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            width: 12px;
+            height: 12px;
+            background: #f44336;
+            border-radius: 50%;
+        }
+        .server-card-name {
+            font-size: 2em;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 10px;
+        }
+        .server-card-user {
+            color: #4facfe;
+            font-size: 1.1em;
+            margin-bottom: 5px;
+        }
+        .server-card-host {
+            color: #666;
+            font-size: 0.85em;
+            font-family: monospace;
+        }
+        .server-card-btn {
+            margin-top: 15px;
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #4facfe, #00f2fe);
+            border: none;
+            border-radius: 10px;
+            color: #fff;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            font-size: 1em;
+        }
+        .server-card-btn:hover {
+            transform: scale(1.02);
+        }
+
+        /* 터미널 모달 */
+        .terminal-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.95);
+            z-index: 3000;
+            flex-direction: column;
+        }
+        .terminal-modal.active { display: flex; }
+        .terminal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 20px;
+            background: rgba(255,255,255,0.05);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .terminal-nav {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .terminal-nav-btn {
+            padding: 8px 16px;
+            background: rgba(79,172,254,0.2);
+            border: 1px solid #4facfe;
+            border-radius: 8px;
+            color: #4facfe;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.2s;
+        }
+        .terminal-nav-btn:hover {
+            background: #4facfe;
+            color: #000;
+        }
+        .terminal-nav-btn.current {
+            background: #4CAF50;
+            border-color: #4CAF50;
+            color: #fff;
+        }
+        .terminal-title {
+            font-size: 1.2em;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .terminal-status {
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 0.8em;
+        }
+        .terminal-status.connecting { background: #ff9800; }
+        .terminal-status.connected { background: #4CAF50; }
+        .terminal-status.disconnected { background: #f44336; }
+        .terminal-close {
+            background: rgba(244,67,54,0.2);
+            border: none;
+            color: #f44336;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1em;
+        }
+        .terminal-close:hover { background: rgba(244,67,54,0.4); }
+        .terminal-container {
+            flex: 1;
+            padding: 10px;
+            overflow: hidden;
+        }
+        #terminal-box {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* ====== 반응형 디자인 (768px 이상 태블릿) ====== */
+        @media (min-width: 768px) {
+            body { padding: 20px; }
+            .header { flex-direction: row; align-items: center; padding: 25px; }
+            .header h1 { font-size: 2em; }
+            .grid { grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; }
+            .card { padding: 20px; }
+            .proxy-item { flex-wrap: nowrap; padding: 12px; }
+            .btn { font-size: 0.85em; padding: 6px 12px; }
+        }
+
+        /* ====== 큰 화면 (1024px 이상 데스크톱) ====== */
+        @media (min-width: 1024px) {
+            .grid { grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); }
+            .card { padding: 25px; }
+            .header { padding: 30px; }
+            .header h1 { font-size: 2.2em; }
+            .card-title { font-size: 1.3em; }
+            .proxy-item { padding: 15px; }
+            .btn { font-size: 0.9em; padding: 8px 15px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>SSH Hub</h1>
+                <div class="subtitle">중앙 SSH 관리 시스템 | ssh.dclub.kr | <span style="color:#4facfe">v3.0.0</span></div>
+            </div>
+            <div class="header-actions">
+                <a href="/terminal" class="btn" style="background: linear-gradient(135deg, #00d9ff, #00a8cc); text-decoration: none;">💻 웹 터미널</a>
+                <a href="/player" class="btn" style="background: linear-gradient(135deg, #f093fb, #f5576c); text-decoration: none;">🎬 녹화 재생</a>
+                <a href="https://dns.dclub.kr" class="btn" style="background: linear-gradient(135deg, #667eea, #764ba2); text-decoration: none;">🌐 DNS 관리</a>
+                <div class="live-indicator" id="ws-status">
+                    <div class="live-dot"></div>
+                    <span>실시간</span>
+                </div>
+                <button class="btn btn-primary" onclick="requestNotificationPermission()">🔔 알림</button>
+                <div id="auth-section">
+                    <button class="btn btn-primary" onclick="showApiKeyPrompt()">🔑 API 키</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hub 서버 카드 섹션 -->
+        <div class="hub-section">
+            <div class="hub-title">
+                🚀 <span>바로 접속</span> - 클릭 한 번으로 연결
+            </div>
+            <div class="hub-cards" id="hub-cards">
+                <!-- 동적 생성 -->
+            </div>
+        </div>
+
+        <div class="grid">
+            <!-- 접속 통계 -->
+            <div class="card wide">
+                <div class="card-header">
+                    <span class="card-icon">📊</span>
+                    <span class="card-title">접속 통계</span>
+                </div>
+                <div class="stats">
+                    <div class="stat-box">
+                        <div class="stat-value green" id="stat-internal">-</div>
+                        <div class="stat-label">내부 접속</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value red" id="stat-external">-</div>
+                        <div class="stat-label">외부 접속</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="stat-total">-</div>
+                        <div class="stat-label">총 접속</div>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="stats-chart"></canvas>
+                </div>
+            </div>
+
+            <!-- JIT 승인 패널 (관리자용) -->
+            <div class="card" id="jit-panel" style="display:none;">
+                <div class="card-header">
+                    <span class="card-icon">🔐</span>
+                    <span class="card-title">JIT 접속 요청</span>
+                    <span class="card-actions">
+                        <span id="jit-pending-count" style="color:#ff9800;font-size:0.9em">0건 대기</span>
+                    </span>
+                </div>
+                <div id="jit-request-list" style="max-height: 200px; overflow-y: auto;"></div>
+                <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <button class="btn btn-primary btn-small" onclick="showJITHistory()">요청 이력</button>
+                </div>
+            </div>
+
+            <!-- 활성 세션 -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">👥</span>
+                    <span class="card-title">활성 세션</span>
+                    <span class="card-actions">
+                        <span id="session-count" style="color:#888;font-size:0.9em">0개</span>
+                    </span>
+                </div>
+                <div id="session-list" style="max-height: 250px; overflow-y: auto;"></div>
+            </div>
+
+            <!-- SSH 프록시 상태 -->
+            <div class="card wide">
+                <div class="card-header">
+                    <span class="card-icon">🔗</span>
+                    <span class="card-title">SSH 프록시 (외부 접속)</span>
+                </div>
+                <div class="stats">
+                    <div class="stat-box">
+                        <div class="stat-value green" id="proxy-ok">-</div>
+                        <div class="stat-label">정상</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" style="color:#ff9800" id="proxy-partial">-</div>
+                        <div class="stat-label">부분</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value red" id="proxy-down">-</div>
+                        <div class="stat-label">중단</div>
+                    </div>
+                </div>
+                <div id="proxy-list"></div>
+            </div>
+
+            <!-- 접속 정보 -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">🔗</span>
+                    <span class="card-title">외부 SSH 접속 정보</span>
+                </div>
+                <div style="padding: 10px;">
+                    <div style="background: rgba(76,175,80,0.1); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                        <div style="font-size: 0.9em; color: #888; margin-bottom: 8px;">공인 IP</div>
+                        <div style="font-family: monospace; font-size: 1.3em; color: #4facfe; font-weight: 700;">123.212.111.26</div>
+                    </div>
+                    
+                    <div style="display: grid; gap: 8px;" id="ssh-commands">
+                        <div class="ssh-cmd" onclick="copyCmd(this)" data-cmd="ssh -p 10073 kim@123.212.111.26">
+                            <span>🖥️ Server-73 (kim)</span>
+                            <code>ssh -p 10073 kim@123.212.111.26</code>
+                            <button>📋</button>
+                        </div>
+                        <div class="ssh-cmd" onclick="copyCmd(this)" data-cmd="ssh -p 10073 kimjin@123.212.111.26">
+                            <span>🖥️ Server-73 (kimjin)</span>
+                            <code>ssh -p 10073 kimjin@123.212.111.26</code>
+                            <button>📋</button>
+                        </div>
+                        <div class="ssh-cmd" onclick="copyCmd(this)" data-cmd="ssh -p 10032 kim@123.212.111.26">
+                            <span>🖥️ Server-232 (kim)</span>
+                            <code>ssh -p 10032 kim@123.212.111.26</code>
+                            <button>📋</button>
+                        </div>
+                        <div class="ssh-cmd" onclick="copyCmd(this)" data-cmd="ssh -p 10053 kimjin@123.212.111.26">
+                            <span>🖥️ Server-253 (프록시)</span>
+                            <code>ssh -p 10053 kimjin@123.212.111.26</code>
+                            <button>📋</button>
+                        </div>
+                        <div class="ssh-cmd" style="background:rgba(255,87,34,0.2);" onclick="copyCmd(this)" data-cmd="ssh -p 22253 kimjin@123.212.111.26">
+                            <span>⭐ Server-253 (직접)</span>
+                            <code>ssh -p 22253 kimjin@123.212.111.26</code>
+                            <button>📋</button>
+                        </div>
+                        <div class="ssh-cmd" onclick="copyCmd(this)" data-cmd="ssh -p 10022 kim@121.164.205.220">
+                            <span>🏢 Company (kim)</span>
+                            <code>ssh -p 10022 kim@121.164.205.220</code>
+                            <button>📋</button>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-top: 15px; padding: 12px; background: rgba(255,152,0,0.1); border-radius: 8px; font-size: 0.85em;">
+                        <div style="color: #ff9800; font-weight: 600; margin-bottom: 4px;">⚠️ 보안 안내</div>
+                        <div style="color: #aaa;">SSH 키 기반 인증만 허용됩니다. 비밀번호 인증은 비활성화되어 있습니다.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 253 직접 접속 (73 다운 시 백업) -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">⭐</span>
+                    <span class="card-title">253 직접 접속 (73 다운 시)</span>
+                </div>
+                <div style="padding: 10px;">
+                    <div style="background: rgba(255,87,34,0.15); padding: 12px; border-radius: 8px; margin-bottom: 12px;">
+                        <div style="font-size: 0.85em; color: #ff5722; font-weight: 600; margin-bottom: 4px;">🚨 73 서버 다운 시 백업 접속</div>
+                        <div style="color: #aaa; font-size: 0.8em;">73을 거치지 않고 253에 직접 접속</div>
+                    </div>
+
+                    <div style="display: grid; gap: 8px;">
+                        <div class="ssh-cmd" onclick="copyCmd(this)" data-cmd="ssh -p 22253 kimjin@123.212.111.26">
+                            <span>🔐 SSH 직접</span>
+                            <code>ssh -p 22253 kimjin@123.212.111.26</code>
+                            <button>📋</button>
+                        </div>
+                        <div class="ssh-cmd" onclick="copyCmd(this)" data-cmd="curl http://123.212.111.26:40253/health">
+                            <span>🗄️ KimDB 직접</span>
+                            <code>http://123.212.111.26:40253</code>
+                            <button>📋</button>
+                        </div>
+                        <div class="ssh-cmd" onclick="copyCmd(this)" data-cmd="http://123.212.111.26:50253">
+                            <span>🌐 SSH Hub 직접</span>
+                            <code>http://123.212.111.26:50253</code>
+                            <button>📋</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 서버 상태 -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">🖥️</span>
+                    <span class="card-title">서버 상태</span>
+                </div>
+                <div id="server-list"></div>
+            </div>
+
+            <!-- 스토리지 대시보드 -->
+            <div class="card" style="grid-column: span 2;">
+                <div class="card-header">
+                    <span class="card-icon">💾</span>
+                    <span class="card-title">스토리지 관리</span>
+                    <div class="card-actions">
+                        <button class="btn btn-secondary btn-small" onclick="loadStorage()">새로고침</button>
+                    </div>
+                </div>
+                <div class="storage-grid">
+                    <!-- 디스크 현황 -->
+                    <div class="storage-section">
+                        <h4>📊 디스크 사용량</h4>
+                        <div id="disk-status">
+                            <div style="color:#888; text-align:center;">로딩 중...</div>
+                        </div>
+                    </div>
+
+                    <!-- 파일 변경 -->
+                    <div class="storage-section">
+                        <h4>📁 최근 변경 (1h)</h4>
+                        <div id="file-changes" class="file-list">
+                            <div style="color:#888; text-align:center;">로딩 중...</div>
+                        </div>
+                    </div>
+
+                    <!-- 보안/에러 로그 -->
+                    <div class="storage-section">
+                        <h4>🔒 보안 & 에러</h4>
+                        <div id="security-logs" class="log-list-mini">
+                            <div style="color:#888; text-align:center;">로딩 중...</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="storage-summary">
+                    <div class="summary-item">
+                        <div class="summary-value" id="summary-disk">-</div>
+                        <div class="summary-label">평균 사용률</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-value" id="summary-files">-</div>
+                        <div class="summary-label">신규 파일</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-value" id="summary-errors">-</div>
+                        <div class="summary-label">에러</div>
+                    </div>
+                    <div class="summary-item">
+                        <div class="summary-value" id="summary-auth">-</div>
+                        <div class="summary-label">SSH 실패</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 접속 로그 -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">📋</span>
+                    <span class="card-title">최근 SSH 접속</span>
+                    <div class="card-actions">
+                        <button class="btn btn-secondary btn-small" onclick="exportCSV()">CSV</button>
+                    </div>
+                </div>
+                <div class="filter-bar">
+                    <input type="text" id="filter-user" placeholder="사용자" style="width:100px">
+                    <select id="filter-server">
+                        <option value="">모든 서버</option>
+                        <option value="73">Server-73</option>
+                        <option value="232">Server-232</option>
+                        <option value="253">Server-253</option>
+                        <option value="외부">외부만</option>
+                    </select>
+                    <button class="btn btn-primary btn-small" onclick="searchLogs()">검색</button>
+                </div>
+                <div id="log-list" style="max-height: 300px; overflow-y: auto;"></div>
+            </div>
+
+            <!-- 실패 로그 -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">⚠️</span>
+                    <span class="card-title">실패 시도</span>
+                </div>
+                <div id="failed-list" style="max-height: 300px; overflow-y: auto;"></div>
+            </div>
+
+            <!-- Fail2ban -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">🚫</span>
+                    <span class="card-title">Fail2ban 차단</span>
+                </div>
+                <div class="stats" style="grid-template-columns: repeat(2, 1fr);">
+                    <div class="stat-box">
+                        <div class="stat-value red" id="banned-current">-</div>
+                        <div class="stat-label">현재 차단</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="banned-total">-</div>
+                        <div class="stat-label">총 차단</div>
+                    </div>
+                </div>
+                <div id="banned-list"></div>
+            </div>
+
+            <!-- #12: 디스크/파일 모니터링 -->
+            <div class="card" style="grid-column: span 2;">
+                <div class="card-header">
+                    <span class="card-icon">💾</span>
+                    <span class="card-title">디스크 현황</span>
+                    <button class="btn btn-small" onclick="loadDisk()">새로고침</button>
+                </div>
+                <div id="disk-status" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">📁</span>
+                    <span class="card-title">최근 변경 파일</span>
+                </div>
+                <select id="recent-server" onchange="loadRecentFiles()" style="width:100%; padding:8px; margin-bottom:10px; background:#2a2a4a; color:#fff; border:1px solid #444; border-radius:5px;">
+                    <option value="73">Server-73</option>
+                    <option value="232">Server-232</option>
+                    <option value="253">Server-253</option>
+                </select>
+                <div id="recent-files" style="max-height: 200px; overflow-y: auto; font-size: 12px;"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">📦</span>
+                    <span class="card-title">대용량 파일 (100M+)</span>
+                </div>
+                <select id="big-server" onchange="loadBigFiles()" style="width:100%; padding:8px; margin-bottom:10px; background:#2a2a4a; color:#fff; border:1px solid #444; border-radius:5px;">
+                    <option value="73">Server-73</option>
+                    <option value="232">Server-232</option>
+                    <option value="253">Server-253</option>
+                </select>
+                <div id="big-files" style="max-height: 200px; overflow-y: auto; font-size: 12px;"></div>
+            </div>
+
+            <!-- #13: 로그 & 보안 -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">🔴</span>
+                    <span class="card-title">시스템 에러</span>
+                </div>
+                <select id="error-server" onchange="loadErrors()" style="width:100%; padding:8px; margin-bottom:10px; background:#2a2a4a; color:#fff; border:1px solid #444; border-radius:5px;">
+                    <option value="73">Server-73</option>
+                    <option value="232">Server-232</option>
+                    <option value="253">Server-253</option>
+                </select>
+                <div id="error-logs" style="max-height: 200px; overflow-y: auto; font-size: 11px; font-family: monospace;"></div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">🛡️</span>
+                    <span class="card-title">보안 스캔</span>
+                </div>
+                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                    <button class="btn btn-small" onclick="checkRootkit()">루트킷 체크</button>
+                    <button class="btn btn-small" onclick="virusScan()">바이러스 스캔</button>
+                </div>
+                <div id="security-result" style="max-height: 150px; overflow-y: auto; font-size: 11px; font-family: monospace;"></div>
+            </div>
+
+            <!-- #14: 동기화 -->
+            <div class="card">
+                <div class="card-header">
+                    <span class="card-icon">🔄</span>
+                    <span class="card-title">NFS/Rsync 상태</span>
+                    <button class="btn btn-small" onclick="loadSync()">새로고침</button>
+                </div>
+                <div id="sync-status" style="font-size: 12px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <button class="refresh-btn" onclick="loadAll()">🔄</button>
+
+    <!-- 터미널 모달 -->
+    <div class="terminal-modal" id="terminal-modal">
+        <div class="terminal-header">
+            <div class="terminal-title">
+                💻 <span id="terminal-server-name">Server</span>
+                <span class="terminal-status connecting" id="terminal-status">연결 중...</span>
+            </div>
+            <div class="terminal-nav" id="terminal-nav">
+                <!-- 동적 생성 -->
+            </div>
+            <button class="terminal-close" onclick="closeTerminal()">✕ 닫기 (ESC)</button>
+        </div>
+        <div class="terminal-container">
+            <div id="terminal-box"></div>
+        </div>
+    </div>
+
+    <!-- 키 추가 모달 -->
+    <div class="modal" id="add-key-modal">
+        <div class="modal-content">
+            <h2>SSH 키 추가</h2>
+            <textarea id="new-key" placeholder="ssh-ed25519 AAAA... comment"></textarea>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" onclick="hideModal()">취소</button>
+                <button class="btn btn-primary" onclick="addKey()">추가</button>
+            </div>
+            <hr style="margin: 20px 0; border-color: rgba(255,255,255,0.1);">
+            <h3 style="margin-bottom: 10px;">새 키 생성</h3>
+            <button class="btn btn-primary" onclick="generateKey()">Ed25519 키 생성</button>
+            <div id="generated-key" style="margin-top: 15px;"></div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let statsChart = null;
+
+        // 터미널 관련 변수
+        let terminal = null;
+        let terminalWs = null;
+        let fitAddon = null;
+
+        // 서버 카드 렌더링
+        function renderHubCards(servers) {
+            const container = document.getElementById('hub-cards');
+            let html = '';
+
+            servers.forEach(s => {
+                const proxyName = s.id === '73' ? 'server-73' : s.id === '232' ? 'server-232' : 'server-253';
+                html += `
+                    <div class="server-card ${s.sshOk ? 'online' : 'offline'}" onclick="connectTerminal('${proxyName}', '${s.name}')">
+                        <div class="server-card-name">${s.id}</div>
+                        <div class="server-card-user">👤 ${s.user}</div>
+                        <div class="server-card-host">${s.host}</div>
+                        <button class="server-card-btn">🔗 바로 접속</button>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+        }
+
+        // 터미널 연결
+        function connectTerminal(serverName, displayName) {
+            const modal = document.getElementById('terminal-modal');
+            const statusEl = document.getElementById('terminal-status');
+            const terminalBox = document.getElementById('terminal-box');
+
+            // 서버 ID 추출 (server-73 → 73)
+            const serverId = serverName.replace('server-', '');
+
+            // 모달 열기
+            modal.classList.add('active');
+            document.getElementById('terminal-server-name').textContent = displayName;
+            statusEl.className = 'terminal-status connecting';
+            statusEl.textContent = '연결 중...';
+
+            // 네비게이션 버튼 렌더링
+            renderTerminalNav(serverId);
+
+            // 기존 터미널 정리
+            if (terminal) {
+                terminal.dispose();
+                terminal = null;
+            }
+            if (terminalWs) {
+                terminalWs.close();
+                terminalWs = null;
+            }
+            terminalBox.innerHTML = '';
+
+            // xterm 초기화
+            terminal = new Terminal({
+                theme: {
+                    background: '#1a1a2e',
+                    foreground: '#ffffff',
+                    cursor: '#4facfe',
+                    cursorAccent: '#1a1a2e',
+                    selection: 'rgba(79,172,254,0.3)'
+                },
+                fontFamily: '"Ubuntu Mono", "Ubuntu Sans Mono", monospace',
+                fontSize: 16,
+                cursorBlink: true,
+                scrollback: 5000,
+                allowTransparency: true,
+                convertEol: true
+            });
+
+            fitAddon = new FitAddon.FitAddon();
+            terminal.loadAddon(fitAddon);
+            terminal.open(terminalBox);
+            fitAddon.fit();
+
+            // WebSocket 연결
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            terminalWs = new WebSocket(`${protocol}//${location.host}/terminal/${serverName}`);
+
+            terminalWs.onopen = () => {
+                terminal.write('\r\n🔗 서버에 연결 중...\r\n');
+            };
+
+            terminalWs.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+
+                if (msg.type === 'connected') {
+                    statusEl.className = 'terminal-status connected';
+                    statusEl.textContent = '연결됨';
+                    terminal.write('\r\n✅ 연결 성공!\r\n\r\n');
+                } else if (msg.type === 'output') {
+                    // UTF-8 디코딩
+                    const binary = atob(msg.data);
+                    const bytes = new Uint8Array(binary.length);
+                    for (let i = 0; i < binary.length; i++) {
+                        bytes[i] = binary.charCodeAt(i);
+                    }
+                    const data = new TextDecoder('utf-8').decode(bytes);
+                    terminal.write(data);
+                } else if (msg.type === 'disconnected') {
+                    statusEl.className = 'terminal-status disconnected';
+                    statusEl.textContent = '연결 종료';
+                    terminal.write('\r\n\r\n❌ 연결이 종료되었습니다.\r\n');
+                } else if (msg.type === 'error') {
+                    statusEl.className = 'terminal-status disconnected';
+                    statusEl.textContent = '오류';
+                    terminal.write(`\r\n\r\n❌ 오류: ${msg.message}\r\n`);
+                }
+            };
+
+            terminalWs.onclose = () => {
+                statusEl.className = 'terminal-status disconnected';
+                statusEl.textContent = '연결 종료';
+            };
+
+            terminalWs.onerror = () => {
+                statusEl.className = 'terminal-status disconnected';
+                statusEl.textContent = '연결 실패';
+                terminal.write('\r\n❌ 연결에 실패했습니다.\r\n');
+            };
+
+            // 터미널 입력 처리
+            terminal.onData((data) => {
+                if (terminalWs && terminalWs.readyState === WebSocket.OPEN) {
+                    terminalWs.send(JSON.stringify({
+                        type: 'input',
+                        data: btoa(data)
+                    }));
+                }
+            });
+
+            // 창 크기 조절
+            window.addEventListener('resize', handleResize);
+            terminal.onResize(({ cols, rows }) => {
+                if (terminalWs && terminalWs.readyState === WebSocket.OPEN) {
+                    terminalWs.send(JSON.stringify({
+                        type: 'resize',
+                        cols,
+                        rows
+                    }));
+                }
+            });
+
+            setTimeout(() => fitAddon.fit(), 100);
+        }
+
+        function handleResize() {
+            if (fitAddon) fitAddon.fit();
+        }
+
+        // 터미널 닫기
+        function closeTerminal() {
+            const modal = document.getElementById('terminal-modal');
+            modal.classList.remove('active');
+
+            if (terminalWs) {
+                terminalWs.close();
+                terminalWs = null;
+            }
+            if (terminal) {
+                terminal.dispose();
+                terminal = null;
+            }
+
+            window.removeEventListener('resize', handleResize);
+        }
+
+        // ESC 키로 터미널 닫기
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeTerminal();
+            }
+        });
+
+        // 서버 정보 (SSH 이동용)
+        const SSH_SERVERS = [
+            { id: '73', name: 'Server-73', host: '192.168.45.73', port: 2222, user: 'kim' },
+            { id: '232', name: 'Server-232', host: '192.168.45.232', port: 2222, user: 'kim' },
+            { id: '253', name: 'Server-253', host: '192.168.45.253', port: 22, user: 'kimjin' }
+        ];
+
+        let currentServerId = null;
+
+        // 터미널 네비게이션 버튼 생성
+        function renderTerminalNav(currentId) {
+            currentServerId = currentId;
+            const nav = document.getElementById('terminal-nav');
+            let html = '<span style="color:#888;margin-right:5px;">이동:</span>';
+
+            SSH_SERVERS.forEach(s => {
+                const isCurrent = s.id === currentId;
+                html += `
+                    <button class="terminal-nav-btn ${isCurrent ? 'current' : ''}"
+                            onclick="${isCurrent ? '' : `jumpToServer('${s.id}')`}"
+                            ${isCurrent ? 'disabled' : ''}>
+                        ${s.id} (${s.user})
+                    </button>
+                `;
+            });
+
+            nav.innerHTML = html;
+        }
+
+        // 다른 서버로 SSH 이동
+        function jumpToServer(targetId) {
+            const target = SSH_SERVERS.find(s => s.id === targetId);
+            if (!target || !terminal || !terminalWs) return;
+
+            const sshCmd = `ssh -p ${target.port} ${target.user}@${target.host}\n`;
+
+            // 터미널에 SSH 명령어 전송
+            if (terminalWs.readyState === WebSocket.OPEN) {
+                terminalWs.send(JSON.stringify({
+                    type: 'input',
+                    data: btoa(sshCmd)
+                }));
+            }
+
+            // 현재 서버 표시 업데이트
+            document.getElementById('terminal-server-name').textContent = `${currentServerId} → ${target.name}`;
+        }
+
+        // WebSocket 연결
+        function connectWebSocket() {
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${location.host}`);
+
+            ws.onopen = () => {
+                document.getElementById('ws-status').style.background = 'rgba(76,175,80,0.2)';
+            };
+
+            ws.onclose = () => {
+                document.getElementById('ws-status').style.background = 'rgba(244,67,54,0.2)';
+                setTimeout(connectWebSocket, 3000);
+            };
+
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+                handleRealtimeEvent(msg);
+            };
+        }
+
+        // 실시간 이벤트 처리
+        function handleRealtimeEvent(msg) {
+            if (msg.type === 'new_login') {
+                addLogEntry(msg.data, 'log-list', true);
+                loadStats();
+                loadSessions();
+            } else if (msg.type === 'failed_attempt') {
+                addLogEntry(msg.data, 'failed-list', true);
+            } else if (msg.type === 'external_access') {
+                showExternalAlert(msg.data);
+            }
+        }
+
+        // 로그 항목 추가
+        function addLogEntry(log, containerId, isNew = false) {
+            const container = document.getElementById(containerId);
+            const isExternal = log.server && log.server.startsWith('외부');
+            const html = `
+                <div class="log-item ${containerId === 'failed-list' ? 'log-failed' : 'log-success'} ${isNew ? 'new' : ''}">
+                    <span class="log-time">${log.time}</span>
+                    <span class="log-server ${isExternal ? 'external' : ''}">${log.server || 'Unknown'}</span>
+                    <span class="log-user">${log.user}</span>
+                    <span class="log-ip">${log.ip}</span>
+                </div>
+            `;
+            container.insertAdjacentHTML('afterbegin', html);
+
+            // 하이라이트 제거
+            if (isNew) {
+                setTimeout(() => {
+                    const newItem = container.querySelector('.new');
+                    if (newItem) newItem.classList.remove('new');
+                }, 2000);
+            }
+
+            // 최대 20개 유지
+            while (container.children.length > 20) {
+                container.removeChild(container.lastChild);
+            }
+        }
+
+        // 외부 접속 알림
+        function showExternalAlert(data) {
+            // 토스트 알림
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.innerHTML = `⚠️ 외부 접속: ${data.user}@${data.ip} → ${data.server}`;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 5000);
+
+            // 브라우저 알림
+            if (Notification.permission === 'granted') {
+                new Notification('SSH 외부 접속 감지', {
+                    body: `${data.user}@${data.ip} → ${data.server}`,
+                    icon: '🔐'
+                });
+            }
+        }
+
+        // 푸시 알림 구독
+        async function requestNotificationPermission() {
+            if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+                alert('이 브라우저는 푸시 알림을 지원하지 않습니다.');
+                return;
+            }
+
+            try {
+                const permission = await Notification.requestPermission();
+                if (permission !== 'granted') {
+                    alert('알림 권한이 거부되었습니다.');
+                    return;
+                }
+
+                // Service Worker 등록
+                const registration = await navigator.serviceWorker.register('/sw.js');
+                await navigator.serviceWorker.ready;
+
+                // VAPID 공개키 가져오기
+                const response = await fetch('/api/push/vapid-public-key');
+                const { publicKey } = await response.json();
+
+                // 푸시 구독
+                const subscription = await registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: urlBase64ToUint8Array(publicKey)
+                });
+
+                // 서버에 구독 등록
+                await fetch('/api/push/subscribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(subscription)
+                });
+
+                alert('푸시 알림이 활성화되었습니다! 외부 SSH 접속 시 알림을 받습니다.');
+            } catch (err) {
+                console.error('푸시 구독 실패:', err);
+                alert('푸시 알림 설정 실패: ' + err.message);
+            }
+        }
+
+        // Base64 -> Uint8Array 변환
+        function urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            for (let i = 0; i < rawData.length; ++i) {
+                outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+        }
+
+        // 테스트 푸시 전송
+        async function testPush() {
+            const res = await fetch('/api/push/test', { method: 'POST' });
+            const data = await res.json();
+            console.log('테스트 푸시:', data);
+        }
+
+        // SSH 명령어 복사
+        function copyCmd(el) {
+            const cmd = el.dataset.cmd;
+            navigator.clipboard.writeText(cmd);
+            el.classList.add('copied');
+            el.querySelector('button').textContent = '✓';
+            setTimeout(() => {
+                el.classList.remove('copied');
+                el.querySelector('button').textContent = '📋';
+            }, 1500);
+        }
+
+        // CSV 내보내기
+        function exportCSV() {
+            window.location.href = `/api/logs/export?apiKey=${apiKey}`;
+        }
+
+        // 로그 검색
+        async function searchLogs() {
+            const user = document.getElementById('filter-user').value;
+            const server = document.getElementById('filter-server').value;
+            const params = new URLSearchParams();
+            if (user) params.set('user', user);
+            if (server) params.set('server', server);
+
+            const res = await apiFetch(`/api/logs/search?${params}`);
+            const data = await res.json();
+
+            let html = '';
+            data.logs.forEach(l => {
+                const isExternal = l.server && l.server.startsWith('외부');
+                html += `
+                    <div class="log-item ${l.logType === 'failed' ? 'log-failed' : 'log-success'}">
+                        <span class="log-time">${l.time}</span>
+                        <span class="log-server ${isExternal ? 'external' : ''}">${l.server || 'Unknown'}</span>
+                        <span class="log-user">${l.user}</span>
+                        <span class="log-ip">${l.ip}</span>
+                    </div>
+                `;
+            });
+            document.getElementById('log-list').innerHTML = html || '<div style="color:#888">로그 없음</div>';
+        }
+
+        // 통계 로드
+        async function loadStats() {
+            try {
+                const res = await apiFetch('/api/stats');
+                const data = await res.json();
+
+                document.getElementById('stat-internal').textContent = data.internal || 0;
+                document.getElementById('stat-external').textContent = data.external || 0;
+                document.getElementById('stat-total').textContent = (data.internal || 0) + (data.external || 0);
+
+                // 차트 업데이트 (2시간 단위, 최근 24시간)
+                const hourlyData = data.hourly || {};
+                const now = new Date();
+                const labels = [];
+                const values = [];
+
+                // 최근 24시간 (12개 슬롯) 생성
+                for (let i = 11; i >= 0; i--) {
+                    const slotTime = new Date(now.getTime() - i * 2 * 60 * 60 * 1000);
+                    const month = slotTime.getMonth() + 1;
+                    const day = slotTime.getDate();
+                    const hour = Math.floor(slotTime.getHours() / 2) * 2;
+                    const slotKey = `${month}/${day} ${String(hour).padStart(2,'0')}:00`;
+                    labels.push(`${String(hour).padStart(2,'0')}:00`);
+                    values.push(hourlyData[slotKey] || 0);
+                }
+
+                if (statsChart) {
+                    statsChart.data.labels = labels;
+                    statsChart.data.datasets[0].data = values;
+                    statsChart.update();
+                } else {
+                    const ctx = document.getElementById('stats-chart').getContext('2d');
+                    statsChart = new Chart(ctx, {
+                        type: 'bar',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: '2시간 단위 접속',
+                                data: values,
+                                backgroundColor: 'rgba(79,172,254,0.5)',
+                                borderColor: '#4facfe',
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { display: false } },
+                            scales: {
+                                y: { beginAtZero: true, ticks: { color: '#888' } },
+                                x: { ticks: { color: '#888' } }
+                            }
+                        }
+                    });
+                }
+            } catch (e) { console.error('Stats error:', e); }
+        }
+
+        // 활성 세션 로드
+        async function loadSessions() {
+            try {
+                const res = await apiFetch('/api/sessions');
+                const data = await res.json();
+
+                document.getElementById('session-count').textContent = `${data.total}개`;
+
+                let html = '';
+                data.sessions.forEach(s => {
+                    html += `
+                        <div class="session-item">
+                            <span class="session-server">${s.server}</span>
+                            <span class="session-user">${s.user}</span>
+                            <span class="session-from">${s.from}</span>
+                            <span class="session-time">${s.loginTime}</span>
+                            <button class="btn btn-stop btn-small" onclick="killSession('${s.server}','${s.pid}')">종료</button>
+                        </div>
+                    `;
+                });
+
+                document.getElementById('session-list').innerHTML = html || '<div style="color:#888">활성 세션 없음</div>';
+            } catch (e) { console.error('Sessions error:', e); }
+        }
+
+        // 세션 종료
+        async function killSession(server, pid) {
+            if (!confirm('이 세션을 종료하시겠습니까?')) return;
+            await apiFetch('/api/sessions/kill', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ server, pid })
+            });
+            loadSessions();
+        }
+
+        async function loadAll() {
+            loadProxies();
+            loadServers();
+            loadStorage();
+            loadLogs();
+            loadFailedLogs();
+            loadFail2ban();
+            loadStats();
+            loadSessions();
+            loadDisk();
+            loadSync();
+        }
+
+        // #12: 디스크 모니터링
+        async function loadDisk() {
+            try {
+                const res = await apiFetch('/api/storage/disk');
+                const data = await res.json();
+                let html = '';
+                data.servers.forEach(s => {
+                    const disk = s.disks[0] || {};
+                    const pct = disk.percent || 0;
+                    const color = pct > 80 ? '#ff6b6b' : pct > 60 ? '#ffa94d' : '#69db7c';
+                    html += `<div style="background:#2a2a4a;padding:10px;border-radius:8px;text-align:center;">
+                        <div style="font-weight:bold;margin-bottom:5px;">Server-${s.id}</div>
+                        <div style="font-size:24px;color:${color}">${pct}%</div>
+                        <div style="font-size:11px;color:#888">${disk.used || '-'} / ${disk.size || '-'}</div>
+                    </div>`;
+                });
+                document.getElementById('disk-status').innerHTML = html;
+            } catch (e) { document.getElementById('disk-status').innerHTML = '<div style="color:#ff6b6b">로드 실패</div>'; }
+        }
+
+        async function loadRecentFiles() {
+            const server = document.getElementById('recent-server').value;
+            try {
+                const res = await apiFetch(`/api/storage/files/recent?server=${server}&mins=60`);
+                const data = await res.json();
+                const html = data.files.map(f => `<div style="padding:3px 0;border-bottom:1px solid #333;word-break:break-all;">${f}</div>`).join('');
+                document.getElementById('recent-files').innerHTML = html || '<div style="color:#888">최근 1시간 변경 없음</div>';
+            } catch (e) { document.getElementById('recent-files').innerHTML = '<div style="color:#ff6b6b">로드 실패</div>'; }
+        }
+
+        async function loadBigFiles() {
+            const server = document.getElementById('big-server').value;
+            try {
+                const res = await apiFetch(`/api/storage/files/big?server=${server}`);
+                const data = await res.json();
+                const html = data.files.map(f => `<div style="padding:3px 0;border-bottom:1px solid #333;"><span style="color:#69db7c">${f.size}</span> ${f.path}</div>`).join('');
+                document.getElementById('big-files').innerHTML = html || '<div style="color:#888">대용량 파일 없음</div>';
+            } catch (e) { document.getElementById('big-files').innerHTML = '<div style="color:#ff6b6b">로드 실패</div>'; }
+        }
+
+        // #13: 로그 & 보안
+        async function loadErrors() {
+            const server = document.getElementById('error-server').value;
+            try {
+                const res = await apiFetch(`/api/logs/errors?server=${server}`);
+                const data = await res.json();
+                const html = data.logs.slice(0, 20).map(l => `<div style="padding:2px 0;border-bottom:1px solid #333;color:#ff6b6b">${l}</div>`).join('');
+                document.getElementById('error-logs').innerHTML = html || '<div style="color:#69db7c">에러 없음</div>';
+            } catch (e) { document.getElementById('error-logs').innerHTML = '<div style="color:#ff6b6b">로드 실패</div>'; }
+        }
+
+        async function checkRootkit() {
+            document.getElementById('security-result').innerHTML = '<div style="color:#ffa94d">스캔 중...</div>';
+            try {
+                const res = await apiFetch('/api/security/rootkit?server=73');
+                const data = await res.json();
+                const html = data.warnings.length ? data.warnings.map(w => `<div style="color:#ff6b6b">${w}</div>`).join('') : '<div style="color:#69db7c">✓ 루트킷 미발견</div>';
+                document.getElementById('security-result').innerHTML = html;
+            } catch (e) { document.getElementById('security-result').innerHTML = '<div style="color:#ff6b6b">스캔 실패</div>'; }
+        }
+
+        async function virusScan() {
+            document.getElementById('security-result').innerHTML = '<div style="color:#ffa94d">바이러스 스캔 중... (시간 소요)</div>';
+            try {
+                const res = await apiFetch('/api/security/scan?server=73', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({path:'/home'}) });
+                const data = await res.json();
+                document.getElementById('security-result').innerHTML = `<pre style="color:#69db7c;white-space:pre-wrap">${data.result || '스캔 완료'}</pre>`;
+            } catch (e) { document.getElementById('security-result').innerHTML = '<div style="color:#ff6b6b">스캔 실패</div>'; }
+        }
+
+        // #14: 동기화
+        async function loadSync() {
+            try {
+                const res = await apiFetch('/api/sync/nfs');
+                const data = await res.json();
+                let html = '';
+                Object.entries(data).forEach(([id, status]) => {
+                    html += `<div style="padding:5px 0;border-bottom:1px solid #333;"><b>Server-${id}:</b> ${status}</div>`;
+                });
+                document.getElementById('sync-status').innerHTML = html || '<div style="color:#888">NFS 마운트 없음</div>';
+            } catch (e) { document.getElementById('sync-status').innerHTML = '<div style="color:#ff6b6b">로드 실패</div>'; }
+        }
+
+        async function loadProxies() {
+            const res = await apiFetch('/api/proxy/status');
+            const data = await res.json();
+
+            let okCount = 0, partialCount = 0, downCount = 0;
+            let html = '';
+
+            data.proxies.forEach(p => {
+                if (p.status === 'ok') okCount++;
+                else if (p.status === 'partial') partialCount++;
+                else downCount++;
+
+                const extAddr = `ssh -p ${p.port} ${p.user}@${p.domain}`;
+                html += `
+                    <div class="proxy-item">
+                        <div class="proxy-status ${p.status}"></div>
+                        <div class="proxy-info">
+                            <div class="proxy-name">${p.name}</div>
+                            <div class="proxy-target">→ ${p.target}</div>
+                            <div class="proxy-external" style="font-size:0.75em; color:#4facfe; margin-top:3px; cursor:pointer;" onclick="navigator.clipboard.writeText('${extAddr}'); this.textContent='복사됨!'; setTimeout(()=>this.textContent='${extAddr}',1000)">
+                                ${extAddr}
+                            </div>
+                        </div>
+                        <div class="proxy-port">${p.port}</div>
+                        <div class="proxy-actions">
+                            ${p.running ?
+                                `<button class="btn btn-stop btn-small" onclick="stopProxy('${p.name}')">중지</button>` :
+                                `<button class="btn btn-start btn-small" onclick="startProxy('${p.name}')">시작</button>`
+                            }
+                        </div>
+                    </div>
+                `;
+            });
+
+            document.getElementById('proxy-ok').textContent = okCount;
+            document.getElementById('proxy-partial').textContent = partialCount;
+            document.getElementById('proxy-down').textContent = downCount;
+            document.getElementById('proxy-list').innerHTML = html;
+        }
+
+        async function startProxy(name) {
+            await apiFetch(`/api/proxy/${name}/start`, { method: 'POST' });
+            loadProxies();
+        }
+
+        async function stopProxy(name) {
+            await apiFetch(`/api/proxy/${name}/stop`, { method: 'POST' });
+            loadProxies();
+        }
+
+
+
+
+        function hideModal() {
+            document.getElementById('add-key-modal').style.display = 'none';
+            document.getElementById('generated-key').innerHTML = '';
+        }
+
+
+
+        async function loadServers() {
+            // 서버 목록 + 클러스터 상태 동시 조회
+            const [serversRes, clusterRes] = await Promise.all([
+                apiFetch('/api/servers'),
+                apiFetch('/api/cluster/status')
+            ]);
+            const data = await serversRes.json();
+            const cluster = await clusterRes.json();
+
+            // 클러스터 정보를 서버 ID로 매핑
+            const clusterMap = {};
+            cluster.servers.forEach(c => clusterMap[c.id] = c);
+
+            // Hub 카드 렌더링
+            renderHubCards(data.servers);
+
+            let html = '';
+            data.servers.forEach(s => {
+                const c = clusterMap[s.id] || {};
+                const isBest = cluster.summary.best === s.id;
+                const viaClass = c.via === 'NexusSSH' ? 'nexus' : 'ssh';
+
+                html += `
+                    <div class="server-item ${isBest ? 'best-server' : ''}">
+                        <div class="server-status ${c.alive ? 'online' : 'offline'}"></div>
+                        <div class="server-info">
+                            <div class="server-name">
+                                ${s.name}
+                                ${isBest ? '<span class="best-badge">⭐ BEST</span>' : ''}
+                            </div>
+                            <div class="server-host">${s.user}@${s.host}</div>
+                        </div>
+                        <div class="server-metrics">
+                            <span class="metric cpu">CPU ${c.cpu || 0}%</span>
+                            <span class="metric mem">MEM ${c.mem || 0}%</span>
+                            <span class="metric via ${viaClass}">${c.via || 'N/A'}</span>
+                        </div>
+                        <div class="server-status-text">${c.alive ? '온라인' : '오프라인'}</div>
+                    </div>
+                `;
+            });
+
+            document.getElementById('server-list').innerHTML = html;
+        }
+
+        async function loadStorage() {
+            try {
+                // 3개 API 병렬 호출
+                const [diskRes, filesRes, errorsRes, authRes] = await Promise.all([
+                    apiFetch('/api/storage/disk'),
+                    apiFetch('/api/storage/files/recent?minutes=60'),
+                    apiFetch('/api/storage/logs/errors'),
+                    apiFetch('/api/storage/logs/auth')
+                ]);
+
+                const disk = await diskRes.json();
+                const files = await filesRes.json();
+                const errors = await errorsRes.json();
+                const auth = await authRes.json();
+
+                // 디스크 현황 렌더링
+                let diskHtml = '';
+                let totalPercent = 0;
+                let serverCount = 0;
+                disk.servers.forEach(s => {
+                    const d = s.disks.find(d => d.mount === '/') || s.disks[0] || {};
+                    const pct = parseInt(d.percent) || 0;
+                    totalPercent += pct;
+                    serverCount++;
+                    const barClass = pct > 80 ? 'danger' : pct > 60 ? 'warn' : 'ok';
+                    diskHtml += `
+                        <div class="disk-bar-container">
+                            <span class="disk-label">${s.id}</span>
+                            <div class="disk-bar">
+                                <div class="disk-bar-fill ${barClass}" style="width:${pct}%"></div>
+                            </div>
+                            <span class="disk-percent">${pct}%</span>
+                        </div>
+                    `;
+                });
+                document.getElementById('disk-status').innerHTML = diskHtml || '<div style="color:#888">데이터 없음</div>';
+                document.getElementById('summary-disk').textContent = serverCount > 0 ? Math.round(totalPercent / serverCount) + '%' : '-';
+
+                // 파일 변경 렌더링
+                let filesHtml = '';
+                let totalFiles = 0;
+                files.servers.forEach(s => {
+                    totalFiles += s.count || 0;
+                    (s.files || []).slice(0, 3).forEach(f => {
+                        const filename = f.split('/').pop();
+                        filesHtml += `
+                            <div class="file-item">
+                                <span class="file-server">[${s.id}]</span>
+                                <span class="file-path" title="${f}">${filename}</span>
+                            </div>
+                        `;
+                    });
+                });
+                document.getElementById('file-changes').innerHTML = filesHtml || '<div style="color:#888; text-align:center;">변경 없음</div>';
+                document.getElementById('summary-files').textContent = totalFiles;
+
+                // 보안/에러 로그 렌더링
+                let logsHtml = '';
+                let totalErrors = 0;
+                let totalAuth = 0;
+
+                errors.servers.forEach(s => {
+                    totalErrors += s.count || 0;
+                    (s.errors || []).slice(0, 2).forEach(e => {
+                        const msg = e.length > 40 ? e.substring(0, 40) + '...' : e;
+                        logsHtml += `<div class="log-item-mini error" title="${e}">[${s.id}] ${msg}</div>`;
+                    });
+                });
+
+                auth.servers.forEach(s => {
+                    totalAuth += s.count || 0;
+                    (s.entries || []).slice(0, 2).forEach(e => {
+                        const msg = e.length > 40 ? e.substring(0, 40) + '...' : e;
+                        logsHtml += `<div class="log-item-mini auth" title="${e}">[${s.id}] ${msg}</div>`;
+                    });
+                });
+
+                document.getElementById('security-logs').innerHTML = logsHtml || '<div style="color:#888; text-align:center;">이상 없음</div>';
+                document.getElementById('summary-errors').textContent = totalErrors;
+                document.getElementById('summary-auth').textContent = totalAuth;
+
+            } catch (e) {
+                console.error('Storage load error:', e);
+                document.getElementById('disk-status').innerHTML = '<div style="color:#f44336">로드 실패</div>';
+            }
+        }
+
+        async function loadLogs() {
+            const res = await apiFetch('/api/logs');
+            const data = await res.json();
+
+            let html = '';
+            data.logs.slice(0, 20).forEach(l => {
+                const isExternal = l.server && l.server.startsWith('외부');
+                html += `
+                    <div class="log-item log-success">
+                        <span class="log-time">${l.time}</span>
+                        <span class="log-server ${isExternal ? 'external' : ''}">${l.server || 'Unknown'}</span>
+                        <span class="log-user">${l.user}</span>
+                        <span class="log-ip">${l.ip}</span>
+                    </div>
+                `;
+            });
+
+            document.getElementById('log-list').innerHTML = html || '<div style="color:#888">로그 없음</div>';
+        }
+
+        async function loadFailedLogs() {
+            const res = await apiFetch('/api/logs/failed');
+            const data = await res.json();
+
+            let html = '';
+            data.logs.slice(0, 20).forEach(l => {
+                const isExternal = l.server && l.server.startsWith('외부');
+                html += `
+                    <div class="log-item log-failed">
+                        <span class="log-time">${l.time}</span>
+                        <span class="log-server ${isExternal ? 'external' : ''}">${l.server || 'Unknown'}</span>
+                        <span class="log-user">${l.user}</span>
+                        <span class="log-ip">${l.ip}</span>
+                    </div>
+                `;
+            });
+
+            document.getElementById('failed-list').innerHTML = html || '<div style="color:#888">실패 로그 없음</div>';
+        }
+
+        async function loadFail2ban() {
+            const res = await apiFetch('/api/fail2ban');
+            const data = await res.json();
+
+            document.getElementById('banned-current').textContent = data.currentlyBanned;
+            document.getElementById('banned-total').textContent = data.totalBanned;
+
+            let html = '';
+            data.bannedIPs.forEach(ip => {
+                html += `<span class="banned-ip">${ip}<span class="unban" onclick="unban('${ip}')">✕</span></span>`;
+            });
+
+            document.getElementById('banned-list').innerHTML = html || '<div style="color:#888">차단된 IP 없음</div>';
+        }
+
+        async function unban(ip) {
+            if (confirm(`${ip} 차단을 해제하시겠습니까?`)) {
+                await apiFetch(`/api/fail2ban/unban/${ip}`, { method: 'POST' });
+                loadFail2ban();
+            }
+        }
+
+        // ============ API 키 인증 ============
+        const API_KEY_STORAGE = 'ssh-hub-api-key';
+        let apiKey = localStorage.getItem(API_KEY_STORAGE);
+
+        // API 요청 헬퍼 (API 키 자동 포함)
+        async function apiFetch(url, options = {}) {
+            if (!apiKey) throw new Error('API key required');
+            options.headers = options.headers || {};
+            options.headers['X-API-Key'] = apiKey;
+            return fetch(url, options);
+        }
+
+        // API 키 검증
+        async function verifyApiKey(key) {
+            const res = await fetch('/api/auth/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ apiKey: key })
+            });
+            return res.ok;
+        }
+
+        // 로그아웃 (API 키 삭제)
+        function logout() {
+            localStorage.removeItem(API_KEY_STORAGE);
+            location.reload();
+        }
+
+        // 인증 상태 체크 및 UI 업데이트
+        async function checkAuth() {
+            const authSection = document.getElementById('auth-section');
+
+            if (apiKey) {
+                // API 키 있음 - 검증
+                const valid = await verifyApiKey(apiKey);
+                if (valid) {
+                    authSection.innerHTML = `
+                        <span style="color:#4facfe; margin-right:10px;">🔑 인증됨</span>
+                        <button class="btn btn-secondary" onclick="logout()">로그아웃</button>
+                    `;
+                    document.getElementById('jit-panel').style.display = 'block';
+                    return true;
+                } else {
+                    // 잘못된 키 - 삭제
+                    localStorage.removeItem(API_KEY_STORAGE);
+                    apiKey = null;
+                }
+            }
+
+            // API 키 없음 - 입력 필요
+            authSection.innerHTML = `
+                <button class="btn btn-primary" onclick="showApiKeyPrompt()">🔑 API 키 입력</button>
+            `;
+            return false;
+        }
+
+        // API 키 입력 프롬프트
+        function showApiKeyPrompt() {
+            const key = prompt('API 키를 입력하세요:');
+            if (key) {
+                verifyApiKey(key).then(valid => {
+                    if (valid) {
+                        localStorage.setItem(API_KEY_STORAGE, key);
+                        apiKey = key;
+                        location.reload();
+                    } else {
+                        alert('잘못된 API 키입니다.');
+                    }
+                });
+            }
+        }
+
+        // ============ JIT 관련 ============
+        async function loadJITRequests() {
+            try {
+                const res = await apiFetch('/api/jit/pending');
+                const data = await res.json();
+
+                document.getElementById('jit-pending-count').textContent = `${data.requests.length}건 대기`;
+
+                let html = '';
+                data.requests.forEach(r => {
+                    const requestTime = new Date(r.requestedAt).toLocaleString('ko-KR');
+                    html += `
+                        <div class="session-item" style="flex-wrap: wrap;">
+                            <div style="flex: 1;">
+                                <div style="font-weight:600;">${r.user}</div>
+                                <div style="font-size:0.8em;color:#888;">${r.server} 접속 요청</div>
+                                <div style="font-size:0.75em;color:#666;">${requestTime}</div>
+                                ${r.reason ? `<div style="font-size:0.75em;color:#aaa;">사유: ${r.reason}</div>` : ''}
+                            </div>
+                            <div style="display:flex;gap:5px;">
+                                <button class="btn btn-start btn-small" onclick="approveJIT('${r.id}')">승인</button>
+                                <button class="btn btn-stop btn-small" onclick="denyJIT('${r.id}')">거부</button>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                document.getElementById('jit-request-list').innerHTML = html || '<div style="color:#888;padding:10px;">대기중인 요청 없음</div>';
+            } catch (e) {
+                console.error('JIT load error:', e);
+            }
+        }
+
+        async function approveJIT(id) {
+            if (!confirm('이 접속 요청을 승인하시겠습니까?')) return;
+            await apiFetch(`/api/jit/${id}/approve`, { method: 'POST' });
+            loadJITRequests();
+        }
+
+        async function denyJIT(id) {
+            if (!confirm('이 접속 요청을 거부하시겠습니까?')) return;
+            await apiFetch(`/api/jit/${id}/deny`, { method: 'POST' });
+            loadJITRequests();
+        }
+
+        async function showJITHistory() {
+            const res = await apiFetch('/api/jit/history');
+            const data = await res.json();
+
+            let html = '<h3 style="margin-bottom:15px;">JIT 요청 이력</h3>';
+            data.requests.forEach(r => {
+                const statusColor = r.status === 'approved' ? '#4CAF50' : r.status === 'denied' ? '#f44336' : '#ff9800';
+                const statusText = r.status === 'approved' ? '승인됨' : r.status === 'denied' ? '거부됨' : r.status === 'expired' ? '만료됨' : '대기중';
+                html += `
+                    <div style="padding:8px;margin:5px 0;background:rgba(0,0,0,0.2);border-radius:5px;font-size:0.85em;">
+                        <span style="color:${statusColor};margin-right:10px;">[${statusText}]</span>
+                        <span>${r.user}</span> → <span style="color:#4facfe;">${r.server}</span>
+                        <span style="color:#666;margin-left:10px;">${new Date(r.requestedAt).toLocaleString('ko-KR')}</span>
+                    </div>
+                `;
+            });
+
+            const modal = document.getElementById('add-key-modal');
+            modal.querySelector('.modal-content').innerHTML = html + '<div class="modal-actions"><button class="btn btn-secondary" onclick="hideModal()">닫기</button></div>';
+            modal.style.display = 'flex';
+        }
+
+        // 초기 로드 (API 키 필수)
+        async function init() {
+            const authenticated = await checkAuth();
+            if (!authenticated) {
+                // 미인증 시 API 키 입력 화면
+                document.querySelector('.container').innerHTML = `
+                    <div style="display:flex;justify-content:center;align-items:center;height:80vh;">
+                        <div style="text-align:center;background:rgba(255,255,255,0.05);padding:60px;border-radius:20px;">
+                            <h1 style="font-size:3em;margin-bottom:20px;">🔐 SSH Hub</h1>
+                            <p style="color:#888;margin-bottom:30px;">접속하려면 API 키를 입력하세요.</p>
+                            <button onclick="showApiKeyPrompt()" class="btn" style="background:linear-gradient(135deg,#4facfe,#00f2fe);padding:15px 40px;font-size:1.2em;border-radius:10px;">
+                                🔑 API 키 입력
+                            </button>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            // 인증됨 - 대시보드 로드
+            connectWebSocket();
+            loadAll();
+            setInterval(loadAll, 30000);
+            setInterval(loadJITRequests, 10000);
+        }
+        init();
+    </script>
+</body>
+</html>

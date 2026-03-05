@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSH Hub - Terminal</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #1a1a2e;
+            color: #eee;
+            font-family: 'Consolas', 'Monaco', monospace;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .header {
+            background: #16213e;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #0f3460;
+        }
+        .header h1 {
+            font-size: 1.2em;
+            color: #00d9ff;
+        }
+        .header .server-info {
+            color: #888;
+            font-size: 0.9em;
+        }
+        .header .controls {
+            display: flex;
+            gap: 10px;
+        }
+        .header button {
+            background: #0f3460;
+            color: #fff;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .header button:hover { background: #e94560; }
+        .header a {
+            color: #00d9ff;
+            text-decoration: none;
+        }
+        #terminal-container {
+            flex: 1;
+            padding: 10px;
+            background: #0d0d0d;
+        }
+        #terminal { height: 100%; }
+        .status-bar {
+            background: #16213e;
+            padding: 8px 20px;
+            font-size: 0.85em;
+            color: #888;
+            display: flex;
+            justify-content: space-between;
+        }
+        .status-bar .connected { color: #4ade80; }
+        .status-bar .disconnected { color: #f87171; }
+        .server-select {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #16213e;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            z-index: 100;
+        }
+        .server-select h2 {
+            margin-bottom: 20px;
+            color: #00d9ff;
+        }
+        .server-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .server-btn {
+            background: #0f3460;
+            color: #fff;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            text-align: left;
+        }
+        .server-btn:hover { background: #e94560; }
+        .server-btn .domain {
+            font-size: 0.8em;
+            color: #888;
+            margin-top: 5px;
+        }
+        .overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 99;
+        }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div class="overlay" id="overlay"></div>
+    <div class="server-select" id="server-select">
+        <h2>서버 선택</h2>
+        <div class="server-list" id="server-list"></div>
+    </div>
+
+    <div class="header">
+        <div>
+            <h1>SSH Hub Terminal</h1>
+            <span class="server-info" id="server-info">서버를 선택하세요</span>
+        </div>
+        <div class="controls">
+            <button onclick="disconnect()">연결 종료</button>
+            <a href="/">대시보드로</a>
+        </div>
+    </div>
+
+    <div id="terminal-container">
+        <div id="terminal"></div>
+    </div>
+
+    <div class="status-bar">
+        <span id="status" class="disconnected">연결 안됨</span>
+        <span id="session-id"></span>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+    <script>
+        let term, ws, fitAddon;
+        let currentServer = null;
+
+        const servers = [
+            { name: 'server-73', label: 'Server-73 (Main)', domain: '73.ssh.dclub.kr' },
+            { name: 'server-232', label: 'Server-232', domain: '232.ssh.dclub.kr' },
+            { name: 'server-253', label: 'Server-253 (kimjin-X99)', domain: '253.ssh.dclub.kr' }
+        ];
+
+        // 서버 목록 렌더링
+        function renderServerList() {
+            const list = document.getElementById('server-list');
+            list.innerHTML = servers.map(s => `
+                <button class="server-btn" onclick="connectToServer('${s.name}')">
+                    ${s.label}
+                    <div class="domain">${s.domain}</div>
+                </button>
+            `).join('');
+        }
+
+        // 서버 연결
+        async function connectToServer(serverName) {
+            // 인증 확인
+            const authRes = await fetch('/api/auth/me');
+            const auth = await authRes.json();
+
+            if (!auth.authenticated) {
+                alert('로그인이 필요합니다.');
+                window.location.href = '/auth/login';
+                return;
+            }
+
+            // JIT 권한 확인 (관리자는 항상 허용)
+            const accessRes = await fetch(`/api/jit/access/${serverName}`);
+            const access = await accessRes.json();
+
+            if (!access.hasAccess && !access.isAdmin) {
+                alert('접속 권한이 없습니다. JIT 요청을 먼저 해주세요.');
+                return;
+            }
+
+            currentServer = servers.find(s => s.name === serverName);
+            document.getElementById('overlay').classList.add('hidden');
+            document.getElementById('server-select').classList.add('hidden');
+            document.getElementById('server-info').textContent = currentServer.label;
+
+            initTerminal();
+            connect(serverName);
+        }
+
+        // 터미널 초기화
+        function initTerminal() {
+            if (term) term.dispose();
+
+            term = new Terminal({
+                cursorBlink: true,
+                fontSize: 14,
+                fontFamily: "'Consolas', 'Monaco', monospace",
+                theme: {
+                    background: '#0d0d0d',
+                    foreground: '#f0f0f0',
+                    cursor: '#00d9ff',
+                    selection: 'rgba(0, 217, 255, 0.3)'
+                }
+            });
+
+            fitAddon = new FitAddon.FitAddon();
+            term.loadAddon(fitAddon);
+            term.open(document.getElementById('terminal'));
+            fitAddon.fit();
+
+            window.addEventListener('resize', () => {
+                fitAddon.fit();
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'resize',
+                        cols: term.cols,
+                        rows: term.rows
+                    }));
+                }
+            });
+
+            term.onData(data => {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'input',
+                        data: btoa(data)
+                    }));
+                }
+            });
+        }
+
+        // WebSocket 연결
+        function connect(serverName) {
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${location.host}/terminal/${serverName}`);
+
+            ws.onopen = () => {
+                document.getElementById('status').className = 'connected';
+                document.getElementById('status').textContent = '연결됨';
+                term.write('\r\n\x1b[32m연결 중...\x1b[0m\r\n');
+            };
+
+            ws.onmessage = (event) => {
+                const msg = JSON.parse(event.data);
+
+                switch (msg.type) {
+                    case 'connected':
+                        document.getElementById('session-id').textContent = `Session: ${msg.sessionId}`;
+                        term.write('\r\n\x1b[32m연결됨!\x1b[0m\r\n\r\n');
+                        break;
+                    case 'output':
+                        term.write(atob(msg.data));
+                        break;
+                    case 'disconnected':
+                        term.write('\r\n\x1b[31m연결 종료됨\x1b[0m\r\n');
+                        document.getElementById('status').className = 'disconnected';
+                        document.getElementById('status').textContent = '연결 종료됨';
+                        break;
+                    case 'error':
+                        term.write(`\r\n\x1b[31m오류: ${msg.message}\x1b[0m\r\n`);
+                        break;
+                }
+            };
+
+            ws.onclose = () => {
+                document.getElementById('status').className = 'disconnected';
+                document.getElementById('status').textContent = '연결 안됨';
+            };
+
+            ws.onerror = (err) => {
+                console.error('WebSocket error:', err);
+                term.write('\r\n\x1b[31mWebSocket 오류\x1b[0m\r\n');
+            };
+        }
+
+        // 연결 종료
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+            document.getElementById('overlay').classList.remove('hidden');
+            document.getElementById('server-select').classList.remove('hidden');
+            document.getElementById('server-info').textContent = '서버를 선택하세요';
+        }
+
+        // 초기화
+        renderServerList();
+    </script>
+</body>
+</html>
