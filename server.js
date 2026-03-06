@@ -21,6 +21,8 @@ try {
 }
 
 const execPromise = util.promisify(exec);
+const { apiOptimizerMiddleware } = require('./api-optimizer');
+
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -79,6 +81,9 @@ const nexusLog = require('./kimnexus-log')('ssh-hub', '73');
 
 app.use(express.json());
 app.use(express.static('public'));
+
+// ✅ API Optimizer: Selective Fields + Caching (모든 API에 적용)
+app.use('/api/', apiOptimizerMiddleware());
 
 // ============ API 키 인증 ============
 
